@@ -101,7 +101,7 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     earthwatch::PluginRender::MakeCurrentForRender();
 
     g_scene->renderFrame(width, height, timeMs, hour, minute, second, nano,
-                         month, day, dayOfWeek, lunarText.c_str(), "", isAmbient);
+                         month, day, dayOfWeek, lunarText.c_str(), isAmbient);
 
     earthwatch::PluginRender::SwapBuffersAfterRender();
 

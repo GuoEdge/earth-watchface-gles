@@ -3,8 +3,6 @@
 #include <hilog/log.h>
 #include <native_window/external_window.h>
 #include <cstring>
-#include <ctime>
-#include <chrono>
 
 extern EarthScene* g_scene;
 
@@ -20,10 +18,6 @@ std::mutex PluginRender::instancesMutex_;
 
 PluginRender::PluginRender()
     : eglCore_()
-    , renderThread_()
-    , frameMutex_()
-    , frameCv_()
-    , isRendering_(false)
     , surfaceReady_(false)
     , xComponent_(nullptr)
     , xComponentId_()
@@ -34,7 +28,6 @@ PluginRender::PluginRender()
 
 PluginRender::~PluginRender()
 {
-    StopRenderLoop();
 }
 
 void PluginRender::RegisterCallback(OH_NativeXComponent* nativeXComponent)
@@ -273,7 +266,6 @@ void PluginRender::OnSurfaceDestroyed(OH_NativeXComponent* component, void* wind
     OH_LOG_Info(LOG_APP, "OnSurfaceDestroyed");
 
     surfaceReady_.store(false);
-    StopRenderLoop();
 
     eglCore_.MakeCurrent();
     eglCore_.Release();
@@ -299,90 +291,6 @@ void PluginRender::DispatchTouchEvent(OH_NativeXComponent* component, void* wind
 
     OH_LOG_Info(LOG_APP, "Touch: type=%{public}d x=%{public}f y=%{public}f",
         touchEvent.type, touchEvent.x, touchEvent.y);
-}
-
-void PluginRender::StartRenderLoop()
-{
-    if (isRendering_.load()) {
-        return;
-    }
-
-    isRendering_.store(true);
-    renderThread_ = std::thread(&PluginRender::RenderLoop, this);
-    OH_LOG_Info(LOG_APP, "Render loop started");
-}
-
-void PluginRender::StopRenderLoop()
-{
-    if (!isRendering_.load()) {
-        return;
-    }
-
-    isRendering_.store(false);
-    frameCv_.notify_all();
-
-    if (renderThread_.joinable()) {
-        renderThread_.join();
-    }
-
-    OH_LOG_Info(LOG_APP, "Render loop stopped");
-}
-
-void PluginRender::RenderLoop()
-{
-    while (isRendering_.load()) {
-        if (!surfaceReady_.load()) {
-            std::unique_lock<std::mutex> lock(frameMutex_);
-            frameCv_.wait_for(lock, std::chrono::milliseconds(FRAME_INTERVAL_MS),
-                [this]() { return !isRendering_.load(); });
-            continue;
-        }
-
-        auto frameStart = std::chrono::steady_clock::now();
-
-        RenderFrame();
-
-        auto frameEnd = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(frameEnd - frameStart);
-        auto remaining = std::chrono::milliseconds(FRAME_INTERVAL_MS) - elapsed;
-
-        if (remaining.count() > 0) {
-            std::unique_lock<std::mutex> lock(frameMutex_);
-            frameCv_.wait_for(lock, remaining,
-                [this]() { return !isRendering_.load(); });
-        }
-    }
-}
-
-void PluginRender::RenderFrame()
-{
-    if (!surfaceReady_.load()) return;
-
-    if (eglCore_.IsContextLost()) {
-        OH_LOG_Error(LOG_APP, "EGL context lost detected");
-        surfaceReady_.store(false);
-        return;
-    }
-
-    eglCore_.MakeCurrent();
-
-    if (g_scene && g_scene->isInitialized()) {
-        int64_t timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        time_t t = timeMs / 1000;
-        struct tm tm_buf;
-        localtime_r(&t, &tm_buf);
-        int nano = static_cast<int>((timeMs % 1000) * 1000000);
-        g_scene->renderFrame(surfaceWidth_, surfaceHeight_, timeMs,
-                             tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, nano,
-                             tm_buf.tm_mon + 1, tm_buf.tm_mday, tm_buf.tm_wday,
-                             "", "", false);
-    } else {
-        glClearColor(0.0f, 0.0f, 0.024f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-    }
-
-    eglCore_.SwapBuffers();
 }
 
 }

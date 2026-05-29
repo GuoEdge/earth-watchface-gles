@@ -68,6 +68,7 @@ struct Index {
   @State gzText: string = ''
   @State isAmbient: boolean = false
   @State renderStarted: boolean = false
+  @State sceneInited: boolean = false
 
   private sunCalc: SunCalculator = new SunCalculator()
   private lunarCalc: LunarCalendar = new LunarCalendar()
@@ -97,7 +98,7 @@ struct Index {
   }
 
   onPageShow() {
-    if (!this.renderStarted && this.surfaceWidth > 0) {
+    if (!this.renderStarted) {
       this.startRenderLoop()
     }
   }
@@ -181,21 +182,21 @@ struct Index {
 
     this.registerFonts()
 
-    let size = nativerender.getSurfaceSize()
-    if (size.width > 0 && size.height > 0) {
-      this.surfaceWidth = size.width
-      this.surfaceHeight = size.height
-    } else {
-      this.surfaceWidth = 466
-      this.surfaceHeight = 466
-    }
-
-    nativerender.initScene(this.surfaceWidth, this.surfaceHeight)
-    this.pushConfig()
-    this.pushSceneData()
-    this.loadTexturesAsync()
-
     this.animTimer = setInterval(() => {
+      if (!this.sceneInited) {
+        let size = nativerender.getSurfaceSize()
+        if (size.width > 0 && size.height > 0) {
+          this.surfaceWidth = size.width
+          this.surfaceHeight = size.height
+          nativerender.initScene(this.surfaceWidth, this.surfaceHeight)
+          this.pushConfig()
+          this.pushSceneData()
+          this.loadTexturesAsync()
+          this.sceneInited = true
+        }
+        return
+      }
+
       this.isAmbient = this.screenState.isAmbient
 
       const now = new Date()
@@ -243,6 +244,7 @@ struct Index {
         })
         .onDestroy(() => {
           this.stopRenderLoop()
+          this.sceneInited = false
           nativerender.destroyScene()
         })
         .onTouch((event: TouchEvent) => {

@@ -25,9 +25,7 @@
 #include <native_xcomponent/native_xcomponent.h>
 #include <unordered_map>
 #include <mutex>
-#include <thread>
 #include <atomic>
-#include <condition_variable>
 
 namespace earthwatch {
 
@@ -59,16 +57,7 @@ private:
     static void OnSurfaceDestroyedCallback(OH_NativeXComponent* component, void* window);
     static void DispatchTouchEventCallback(OH_NativeXComponent* component, void* window);
 
-    void StartRenderLoop();
-    void StopRenderLoop();
-    void RenderLoop();
-    void RenderFrame();
-
     EglCore eglCore_;
-    std::thread renderThread_;
-    std::mutex frameMutex_;
-    std::condition_variable frameCv_;
-    std::atomic<bool> isRendering_;
     std::atomic<bool> surfaceReady_;
 
     OH_NativeXComponent* xComponent_ = nullptr;
@@ -76,7 +65,6 @@ private:
     int surfaceWidth_ = 0;
     int surfaceHeight_ = 0;
 
-    static constexpr int FRAME_INTERVAL_MS = 33;
     static std::unordered_map<std::string, PluginRender*> instances_;
     static std::mutex instancesMutex_;
 };

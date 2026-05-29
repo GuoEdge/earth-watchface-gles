@@ -288,7 +288,7 @@ void EarthScene::drawHands(const float* mvp, float cx, float cy, float ir, float
 void EarthScene::renderInteractive(int width, int height, int64_t timeMs,
                                     int hour, int minute, int second, int nano,
                                     int month, int day, int dayOfWeek,
-                                    const char* lunarText, const char* gzText) {
+                                    const char* lunarText) {
     float cx = width / 2.0f, cy = height / 2.0f;
     float r = fmin(width, height) / 2.0f;
     float ir = r - 12.0f;
@@ -321,8 +321,6 @@ void EarthScene::renderInteractive(int width, int height, int64_t timeMs,
 
     ry += dragOffset_;
 
-    float ang = atan2f(data_.sunDir[0], data_.sunDir[2]);
-
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0.024f, 1);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -352,7 +350,8 @@ void EarthScene::renderInteractive(int width, int height, int64_t timeMs,
     }
 
     overlay_.setSunDirection(data_.sunDir);
-    overlay_.renderTerminator(rotYRad, asinf(data_.sunDir[1]));
+    float decl = fmaxf(-1.0f, fminf(1.0f, data_.sunDir[1]));
+    overlay_.renderTerminator(rotYRad, asinf(decl));
 
     ensureAtmoTexture(ir);
     if (atmoLoaded_) {
@@ -441,7 +440,7 @@ void EarthScene::renderAmbientMode(int width, int height,
 void EarthScene::renderFrame(int width, int height, int64_t timeMs,
                               int hour, int minute, int second, int nano,
                               int month, int day, int dayOfWeek,
-                              const char* lunarText, const char* gzText,
+                              const char* lunarText,
                               bool isAmbient) {
     if (width <= 0 || height <= 0) return;
     initGl(width, height);
@@ -450,7 +449,7 @@ void EarthScene::renderFrame(int width, int height, int64_t timeMs,
         renderAmbientMode(width, height, hour, minute, second, month, day, dayOfWeek);
     } else {
         renderInteractive(width, height, timeMs, hour, minute, second, nano,
-                          month, day, dayOfWeek, lunarText, gzText);
+                          month, day, dayOfWeek, lunarText);
     }
 }
 

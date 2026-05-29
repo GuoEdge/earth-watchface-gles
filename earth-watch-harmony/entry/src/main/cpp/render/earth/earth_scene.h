@@ -11,7 +11,7 @@
  * 数据更新接口：
  *   - updateSunDirection()：太阳方向（影响日/夜面和晨昏线）
  *   - updateConfig()：用户配置（调色板、显示开关、弧线数据源）
- *   - updateData()：传感器数据（电池/天气/通知），保留已有的 sunDir 不被覆盖
+ *   - updateData()：传感器数据（电池/天气），保留已有的 sunDir 不被覆盖
  *
  * 纹理加载接口：
  *   - loadDayTexture / loadNightTexture / loadCloudTexture：
@@ -60,7 +60,7 @@ public:
     void renderFrame(int width, int height, int64_t timeMs,
                      int hour, int minute, int second, int nano,
                      int month, int day, int dayOfWeek,
-                     const char* lunarText, const char* gzText,
+                     const char* lunarText,
                      bool isAmbient);
     void requestSpin();
     void onDragDelta(float dx);
@@ -79,7 +79,7 @@ private:
     void renderInteractive(int width, int height, int64_t timeMs,
                            int hour, int minute, int second, int nano,
                            int month, int day, int dayOfWeek,
-                           const char* lunarText, const char* gzText);
+                           const char* lunarText);
     void renderAmbientMode(int width, int height,
                            int hour, int minute, int second,
                            int month, int day, int dayOfWeek);
