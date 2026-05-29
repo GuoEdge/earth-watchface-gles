@@ -1,0 +1,10 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "EarthWatch 3D Earth Watch Face" },
+    { "name": "ability_desc", "value": "EarthWatch Watch Face" },
+    { "name": "ability_label", "value": "EarthWatch" }
+  ],
+  "color": [
+    { "name": "start_window_background", "value": "#000006" }
+  ]
+}
