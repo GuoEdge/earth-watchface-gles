@@ -1,3 +1,17 @@
+/**
+ * egl_core.h — EGL 上下文管理
+ *
+ * 封装 EGL Display/Context/Surface 的完整生命周期。
+ *
+ * 关键设计：
+ *   - EGL_CONTEXT_CLIENT_VERSION 设为 2（创建 ES 2.0 上下文）。
+ *     虽然链接了 GLESv3，但 ES 3.0 上下文需要更严格的驱动支持，
+ *     ES 2.0 上下文可以访问大部分 ES 3.0 功能（如 glGenerateMipmap），
+ *     且兼容性更好。着色器使用 GLSL ES 1.0 语法。
+ *   - IsContextLost() 简化为只检查 initialized_ 标志，
+ *     不调用 eglGetError()（避免清除错误状态的副作用）。
+ */
+
 #ifndef EARTH_WATCH_EGL_CORE_H
 #define EARTH_WATCH_EGL_CORE_H
 

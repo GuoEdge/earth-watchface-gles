@@ -1,3 +1,45 @@
+/**
+ * Index.ets — 表盘主页面
+ *
+ * 架构角色：HarmonyOS 表盘的 UI 入口，协调 ArkUI 叠加层和 Native GL 渲染。
+ *
+ * 渲染架构：
+ *   Stack {
+ *     XComponent(TEXTURE模式) ← Native OpenGL ES 渲染（3D地球+2D表盘元素）
+ *     Column(文字叠加层)      ← ArkUI 文字（时间/日期/农历），hitTestBehavior=Transparent
+ *   }
+ *   TEXTURE 模式允许 ArkUI 组件叠加在 GL 渲染之上（SURFACE 模式不行）。
+ *
+ * 渲染循环（由 ArkTS 主线程驱动，~30fps）：
+ *   setInterval(33ms) → {
+ *     计算时间/农历/太阳方向,
+ *     updateSunDirection(),
+ *     pushSceneData() → updateData() [天气/电池/通知],
+ *     renderFrame() → MakeCurrent → g_scene->renderFrame() → SwapBuffers
+ *   }
+ *
+ * 纹理加载（异步，仅一次）：
+ *   loadTexturesAsync() → resourceManager.getRawFileContent() → nativerender.loadTextures()
+ *   → NAPI 层 stb_image 解码 → g_scene->loadDay/Night/CloudTexture()
+ *
+ * 配置持久化：
+ *   @StorageLink 装饰器自动同步 PersistentStorage，
+ *   字符串 '0'/'1' 表示关闭/开启（showLunar, showSensors, showClouds）。
+ *
+ * 生命周期：
+ *   aboutToAppear → 启动天气获取
+ *   onLoad → 启动渲染循环 + 加载纹理 + 注册字体
+ *   onPageHide → 暂停渲染循环（省电）
+ *   onPageShow → 恢复渲染循环
+ *   onDestroy → 停止渲染 + 销毁 Native 场景
+ *
+ * 已知限制（功能增强项）：
+ *   - 电池信息硬编码为 0（需接入 @ohos.batteryInfo）
+ *   - 通知计数硬编码为 0（需接入 @ohos.notification）
+ *   - 天气位置硬编码上海（需接入 @ohos.geoLocationManager）
+ *   - AOD 状态始终为 false（需监听屏幕状态）
+ */
+
 import nativerender from 'libnativerender.so'
 import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'

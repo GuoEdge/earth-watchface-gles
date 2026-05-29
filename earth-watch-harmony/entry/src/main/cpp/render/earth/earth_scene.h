@@ -1,3 +1,26 @@
+/**
+ * earth_scene.h — 渲染主控
+ *
+ * 架构角色：协调 EarthRenderer（3D球体）、GlOverlay（云层/晨昏线/大气）、
+ * GlPrimitives（2D图元：表圈/刻度/指针/弧线）三个子模块的渲染顺序和状态。
+ *
+ * 渲染模式：
+ *   - Interactive（正常模式）：3D地球 + 云层 + 晨昏线 + 大气辉光 + 2D表盘元素
+ *   - Ambient（AOD熄屏模式）：仅表圈 + 刻度 + 时/分指针（华为AOD要求≤20%非黑像素）
+ *
+ * 数据更新接口：
+ *   - updateSunDirection()：太阳方向（影响日/夜面和晨昏线）
+ *   - updateConfig()：用户配置（调色板、显示开关、弧线数据源）
+ *   - updateData()：传感器数据（电池/天气/通知），保留已有的 sunDir 不被覆盖
+ *
+ * 纹理加载接口：
+ *   - loadDayTexture / loadNightTexture / loadCloudTexture：
+ *     在 init() 之后异步调用，因为纹理数据来自 ArkTS 侧的 rawfile 读取。
+ *
+ * 弧线数据源映射（arcDataSource[] → drawArcs 中的 switch）：
+ *   0=电池, 3=温度, 6=UV指数, 8=体感温度, 9=降水概率, 99=隐藏
+ */
+
 #pragma once
 
 #include "earth_renderer.h"

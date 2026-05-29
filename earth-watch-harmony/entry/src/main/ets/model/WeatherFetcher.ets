@@ -1,3 +1,20 @@
+/**
+ * WeatherFetcher.ets — 天气数据获取
+ *
+ * 使用 Open-Meteo 免费 API（无需 API Key）获取当前天气数据。
+ * 每 30 分钟自动刷新一次。
+ *
+ * 提供的数据（通过 getter 属性访问）：
+ *   temperature  — 当前温度 (°C)
+ *   feelsLike    — 体感温度 (°C)
+ *   uvIndex      — UV 指数 (0-11+)
+ *   precipProb   — 降水概率 (0-100%)
+ *   display      — 显示字符串（图标+温度，如"⛅25°"）
+ *
+ * 已知限制：
+ *   - 坐标硬编码为上海 (31.2304, 121.4737)
+ *   - 应接入 @ohos.geoLocationManager 获取用户当前位置
+ */
 import http from '@ohos.net.http'
 
 export class WeatherFetcher {

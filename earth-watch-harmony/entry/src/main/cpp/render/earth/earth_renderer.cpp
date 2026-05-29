@@ -1,3 +1,18 @@
+/**
+ * earth_renderer.cpp — 3D 地球球体渲染器实现
+ *
+ * 渲染管线：
+ *   1. createSphere() 生成 80×192 UV 球体（顶点+法线+UV → VBO，索引 → IBO）
+ *   2. compileShaders() 编译日/夜混合着色器
+ *   3. loadDayTexture/loadNightTexture 上传纹理（RGBA 格式，因为 stb_image 始终输出 4 通道）
+ *   4. render() 计算透视+视图+模型矩阵，绘制球体
+ *
+ * 着色器核心逻辑：
+ *   - 根据法线与太阳方向的点积 NdotL，在日间纹理和夜间纹理之间 smoothstep 混合
+ *   - 日间面添加高光（Phong 反射模型）
+ *   - X轴倾斜 -0.13962634 rad ≈ -8°，模拟地球自转轴倾斜
+ */
+
 #include "earth_renderer.h"
 #include <cmath>
 #include <vector>
@@ -184,7 +199,7 @@ void EarthRenderer::init(int surfaceSize) {
 
 void EarthRenderer::loadDayTexture(const uint8_t* data, int w, int h) {
     if (!data) return;
-    loadTexture(data, w, h, true, dayTex_);
+    loadTexture(data, w, h, false, dayTex_);
 }
 
 void EarthRenderer::loadNightTexture(const uint8_t* data, int w, int h) {

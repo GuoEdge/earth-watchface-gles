@@ -1,3 +1,23 @@
+/**
+ * napi_init.cpp — NAPI 桥接层
+ *
+ * 架构角色：ArkTS (Index.ets) 与 C++ Native 渲染层之间的唯一接口。
+ * 所有 ArkTS → C++ 的调用都经过此文件中定义的 NAPI 函数。
+ *
+ * 数据流：
+ *   ArkTS setInterval(33ms) → renderFrame() → MakeCurrent → g_scene->renderFrame() → SwapBuffers
+ *   ArkTS onLoad           → initScene()   → g_scene->init()
+ *   ArkTS async            → loadTextures() → stb_image 解码 → g_scene->loadDay/Night/CloudTexture()
+ *   ArkTS setInterval      → updateSunDirection() / updateData() / updateConfig()
+ *
+ * 关键设计决策：
+ *   - 渲染由 ArkTS 主线程驱动（setInterval），不使用 C++ 渲染线程，
+ *     避免 EGL 上下文在两个线程间竞争。
+ *   - 纹理通过 ArkTS 读取 rawfile → ArrayBuffer → NAPI 传递 → stb_image 解码，
+ *     因为 HarmonyOS Native 层没有直接的 rawfile 读取 API。
+ *   - g_scene 是全局单例，生命周期由 destroyScene() 管理。
+ */
+
 #include <napi/native_api.h>
 #include <native_xcomponent/native_xcomponent.h>
 #include <hilog/log.h>
@@ -14,14 +34,28 @@ static napi_value InitScene(napi_env env, napi_callback_info info) {
     napi_value args[2];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
+    if (argc < 2) return nullptr;
+
     int32_t width = 0, height = 0;
     napi_get_value_int32(env, args[0], &width);
     napi_get_value_int32(env, args[1], &height);
 
-    if (!g_scene) g_scene = new EarthScene();
+    if (g_scene) {
+        delete g_scene;
+        g_scene = nullptr;
+    }
+    g_scene = new EarthScene();
+
+    earthwatch::PluginRender::MakeCurrentForRender();
+
     g_scene->init(width, height);
 
-    return nullptr;
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
+                 "InitScene %{public}d x %{public}d", width, height);
+
+    napi_value result;
+    napi_get_undefined(env, &result);
+    return result;
 }
 
 static napi_value RenderFrame(napi_env env, napi_callback_info info) {
@@ -29,7 +63,7 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     napi_value args[12];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (!g_scene) return nullptr;
+    if (!g_scene || argc < 12) return nullptr;
 
     int32_t width = 0, height = 0;
     int64_t timeMs = 0;
@@ -37,7 +71,6 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     int32_t month = 0, day = 0, dayOfWeek = 0;
     bool isAmbient = false;
 
-    if (argc < 12) return nullptr;
     napi_get_value_int32(env, args[0], &width);
     napi_get_value_int32(env, args[1], &height);
     napi_get_value_int64(env, args[2], &timeMs);
@@ -80,19 +113,23 @@ static napi_value UpdateSunDirection(napi_env env, napi_callback_info info) {
     napi_value args[1];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (!g_scene) return nullptr;
+    if (!g_scene || argc < 1) return nullptr;
 
-    float sunDir[3] = {0, 0, 1};
     napi_value arr = args[0];
-    for (int i = 0; i < 3; i++) {
-        napi_value elem;
-        napi_get_element(env, arr, i, &elem);
-        double val = 0;
-        napi_get_value_double(env, elem, &val);
-        sunDir[i] = static_cast<float>(val);
-    }
-    g_scene->updateSunDirection(sunDir);
+    float sunDir[3] = {0, 0, 1};
+    napi_value xVal, yVal, zVal;
+    napi_get_element(env, arr, 0, &xVal);
+    napi_get_element(env, arr, 1, &yVal);
+    napi_get_element(env, arr, 2, &zVal);
+    double xd = 0, yd = 0, zd = 0;
+    napi_get_value_double(env, xVal, &xd);
+    napi_get_value_double(env, yVal, &yd);
+    napi_get_value_double(env, zVal, &zd);
+    sunDir[0] = static_cast<float>(xd);
+    sunDir[1] = static_cast<float>(yd);
+    sunDir[2] = static_cast<float>(zd);
 
+    g_scene->updateSunDirection(sunDir);
     return nullptr;
 }
 
@@ -101,12 +138,12 @@ static napi_value UpdateConfig(napi_env env, napi_callback_info info) {
     napi_value args[1];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (!g_scene) return nullptr;
+    if (!g_scene || argc < 1) return nullptr;
 
     EarthSceneConfig cfg;
     napi_value obj = args[0];
-
     napi_value val;
+
     napi_get_named_property(env, obj, "accentIdx", &val);
     napi_get_value_int32(env, val, &cfg.accentIdx);
     napi_get_named_property(env, obj, "showLunar", &val);
@@ -118,12 +155,14 @@ static napi_value UpdateConfig(napi_env env, napi_callback_info info) {
     napi_get_named_property(env, obj, "animMode", &val);
     napi_get_value_int32(env, val, &cfg.animMode);
 
-    napi_value arcsArr;
-    napi_get_named_property(env, obj, "arcDataSource", &arcsArr);
+    napi_value arcArr;
+    napi_get_named_property(env, obj, "arcDataSource", &arcArr);
     for (int i = 0; i < 4; i++) {
         napi_value elem;
-        napi_get_element(env, arcsArr, i, &elem);
-        napi_get_value_int32(env, elem, &cfg.arcDataSource[i]);
+        napi_get_element(env, arcArr, i, &elem);
+        int32_t v = 0;
+        napi_get_value_int32(env, elem, &v);
+        cfg.arcDataSource[i] = v;
     }
 
     g_scene->updateConfig(cfg);
@@ -195,6 +234,11 @@ static napi_value DestroyScene(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
+/**
+ * 从 ArrayBuffer 解码图像并加载纹理。
+ * stb_load_from_memory 强制请求 4 通道 (RGBA)，因此无论源文件是 JPEG 还是 PNG，
+ * 解码后的像素数据始终是 RGBA 格式，loadTexture 应使用 isRgb=false。
+ */
 static bool decodeAndLoad(napi_env env, napi_value arrayBuffer,
                            void (EarthScene::*loader)(const uint8_t*, int, int)) {
     size_t byteLength = 0;
@@ -229,24 +273,8 @@ static napi_value LoadTextures(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
-EXTERN_C_START
-napi_value Init(napi_env env, napi_value exports) {
-    napi_value exportInstance = nullptr;
-    if (napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &exportInstance) != napi_ok) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0x3200, "EarthWatch", "Init: napi_get_named_property fail");
-        return exports;
-    }
-
-    OH_NativeXComponent* nativeXComponent = nullptr;
-    if (napi_unwrap(env, exportInstance, reinterpret_cast<void**>(&nativeXComponent)) != napi_ok) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0x3200, "EarthWatch", "Init: napi_unwrap fail");
-        return exports;
-    }
-
-    if (nativeXComponent) {
-        earthwatch::PluginRender::RegisterCallback(nativeXComponent);
-    }
-
+extern "C" __attribute__((visibility("default"))) napi_value Init(napi_env env, napi_value exports)
+{
     napi_property_descriptor desc[] = {
         {"initScene", nullptr, InitScene, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"renderFrame", nullptr, RenderFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -257,21 +285,18 @@ napi_value Init(napi_env env, napi_value exports) {
         {"destroyScene", nullptr, DestroyScene, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadTextures", nullptr, LoadTextures, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
+
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+
+    napi_value exportObj;
+    napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &exportObj);
+
+    OH_NativeXComponent* nativeXComponent = nullptr;
+    napi_unwrap(env, exportObj, reinterpret_cast<void**>(&nativeXComponent));
+
+    if (nativeXComponent != nullptr) {
+        earthwatch::PluginRender::RegisterCallback(nativeXComponent);
+    }
+
     return exports;
-}
-EXTERN_C_END
-
-static napi_module demoModule = {
-    .nm_version = 1,
-    .nm_flags = 0,
-    .nm_filename = nullptr,
-    .nm_register_func = Init,
-    .nm_modname = "nativerender",
-    .nm_priv = ((void*)0),
-    .reserved = {0},
-};
-
-extern "C" __attribute__((constructor)) void RegisterModule(void) {
-    napi_module_register(&demoModule);
 }
