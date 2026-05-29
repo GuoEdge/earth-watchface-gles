@@ -1,7 +1,12 @@
 #include "plugin_render.h"
+#include "earth/earth_scene.h"
 #include <hilog/log.h>
 #include <native_window/external_window.h>
 #include <cstring>
+#include <ctime>
+#include <chrono>
+
+extern EarthScene* g_scene;
 
 #undef LOG_DOMAIN
 #undef LOG_TAG
@@ -339,7 +344,21 @@ void PluginRender::RenderFrame()
 
     eglCore_.MakeCurrent();
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (g_scene && g_scene->isInitialized()) {
+        int64_t timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        time_t t = timeMs / 1000;
+        struct tm tm_buf;
+        localtime_r(&t, &tm_buf);
+        int nano = static_cast<int>((timeMs % 1000) * 1000000);
+        g_scene->renderFrame(surfaceWidth_, surfaceHeight_, timeMs,
+                             tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, nano,
+                             tm_buf.tm_mon + 1, tm_buf.tm_mday, tm_buf.tm_wday,
+                             "", "", false);
+    } else {
+        glClearColor(0.0f, 0.0f, 0.024f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
 
     eglCore_.SwapBuffers();
 }

@@ -32,8 +32,6 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     int64_t timeMs = 0;
     int32_t hour = 0, minute = 0, second = 0, nano = 0;
     int32_t month = 0, day = 0, dayOfWeek = 0;
-    napi_valuetype type;
-    napi_typeof(env, args[11], &type);
     bool isAmbient = false;
 
     napi_get_value_int32(env, args[0], &width);
@@ -48,11 +46,16 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     napi_get_value_int32(env, args[9], &dayOfWeek);
     napi_get_value_bool(env, args[11], &isAmbient);
 
-    size_t lunarLen = 0;
+    std::string lunarText;
     napi_value lunarVal = args[10];
-    napi_get_value_string_utf8(env, lunarVal, nullptr, 0, &lunarLen);
-    std::string lunarText(lunarLen, '\0');
-    napi_get_value_string_utf8(env, lunarVal, &lunarText[0], lunarLen + 1, &lunarLen);
+    if (lunarVal != nullptr) {
+        size_t lunarLen = 0;
+        napi_get_value_string_utf8(env, lunarVal, nullptr, 0, &lunarLen);
+        if (lunarLen > 0) {
+            lunarText.resize(lunarLen);
+            napi_get_value_string_utf8(env, lunarVal, &lunarText[0], lunarLen + 1, &lunarLen);
+        }
+    }
 
     g_scene->renderFrame(width, height, timeMs, hour, minute, second, nano,
                          month, day, dayOfWeek, lunarText.c_str(), "", isAmbient);
@@ -67,16 +70,16 @@ static napi_value UpdateSunDirection(napi_env env, napi_callback_info info) {
 
     if (!g_scene) return nullptr;
 
-    EarthSceneData data;
+    float sunDir[3] = {0, 0, 1};
     napi_value arr = args[0];
     for (int i = 0; i < 3; i++) {
         napi_value elem;
         napi_get_element(env, arr, i, &elem);
         double val = 0;
         napi_get_value_double(env, elem, &val);
-        data.sunDir[i] = static_cast<float>(val);
+        sunDir[i] = static_cast<float>(val);
     }
-    g_scene->updateData(data);
+    g_scene->updateSunDirection(sunDir);
 
     return nullptr;
 }

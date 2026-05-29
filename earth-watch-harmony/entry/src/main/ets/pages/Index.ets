@@ -2,23 +2,24 @@ import nativerender from 'libnativerender.so'
 import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'
 import { WeatherFetcher } from '../model/WeatherFetcher'
-import display from '@ohos.display'
 
 @Entry
 @Component
 struct Index {
+  @StorageLink('accent_color') accentColorStr: string = '0'
+  @StorageLink('show_lunar') showLunarStr: string = '0'
+  @StorageLink('show_sensors') showSensorsStr: string = '0'
+  @StorageLink('show_clouds') showCloudsStr: string = '0'
+  @StorageLink('animation_mode') animModeStr: string = '0'
+  @StorageLink('arc_tl') arcTlStr: string = '0'
+  @StorageLink('arc_tr') arcTrStr: string = '6'
+  @StorageLink('arc_bl') arcBlStr: string = '9'
+  @StorageLink('arc_br') arcBrStr: string = '8'
   @State currentTime: string = '00:00'
   @State currentDate: string = ''
   @State lunarText: string = ''
   @State gzText: string = ''
   @State isAmbient: boolean = false
-  @State accentIdx: number = 0
-  @State showLunar: boolean = true
-  @State showSensors: boolean = true
-  @State showClouds: boolean = true
-  @State animMode: number = 0
-  @State arcDataSource: number[] = [0, 6, 9, 8]
-  @State fontStyle: number = 0
 
   private sunCalc: SunCalculator = new SunCalculator()
   private lunarCalc: LunarCalendar = new LunarCalendar()
@@ -32,7 +33,6 @@ struct Index {
   aboutToAppear() {
     this.loadConfig()
     this.weatherFetcher.startFetching()
-    this.startRenderLoop()
   }
 
   aboutToDisappear() {
@@ -43,39 +43,22 @@ struct Index {
   }
 
   loadConfig() {
-    try {
-      const accent = PersistentStorage.getPersistProp('accent_color', '0')
-      this.accentIdx = parseInt(accent as string) || 0
-      const lunar = PersistentStorage.getPersistProp('show_lunar', '0')
-      this.showLunar = (lunar as string) === '0'
-      const sensors = PersistentStorage.getPersistProp('show_sensors', '0')
-      this.showSensors = (sensors as string) === '0'
-      const clouds = PersistentStorage.getPersistProp('show_clouds', '0')
-      this.showClouds = (clouds as string) === '0'
-      const anim = PersistentStorage.getPersistProp('animation_mode', '0')
-      this.animMode = parseInt(anim as string) || 0
-      const arcTl = PersistentStorage.getPersistProp('arc_tl', '0')
-      const arcTr = PersistentStorage.getPersistProp('arc_tr', '6')
-      const arcBl = PersistentStorage.getPersistProp('arc_bl', '9')
-      const arcBr = PersistentStorage.getPersistProp('arc_br', '8')
-      this.arcDataSource = [
-        parseInt(arcTl as string) || 0,
-        parseInt(arcTr as string) || 6,
-        parseInt(arcBl as string) || 9,
-        parseInt(arcBr as string) || 8
-      ]
-    } catch (e) {
-    }
+    this.pushConfig()
   }
 
   pushConfig() {
     nativerender.updateConfig({
-      accentIdx: this.accentIdx,
-      showLunar: this.showLunar,
-      showSensors: this.showSensors,
-      showClouds: this.showClouds,
-      animMode: this.animMode,
-      arcDataSource: this.arcDataSource
+      accentIdx: parseInt(this.accentColorStr) || 0,
+      showLunar: this.showLunarStr === '0',
+      showSensors: this.showSensorsStr === '0',
+      showClouds: this.showCloudsStr === '0',
+      animMode: parseInt(this.animModeStr) || 0,
+      arcDataSource: [
+        parseInt(this.arcTlStr) || 0,
+        parseInt(this.arcTrStr) || 6,
+        parseInt(this.arcBlStr) || 9,
+        parseInt(this.arcBrStr) || 8
+      ]
     })
   }
 
@@ -88,8 +71,8 @@ struct Index {
       const timeMs = now.getTime()
       this.currentTime = `${this.pad2(now.getHours())}:${this.pad2(now.getMinutes())}`
       this.currentDate = `${now.getMonth() + 1}月${now.getDate()}日 ${this.dow(now.getDay())}`
-      this.lunarText = this.showLunar ? this.lunarCalc.toLunar(now) : ''
-      this.gzText = this.showLunar ? this.lunarCalc.toGanzhi(now) : ''
+      this.lunarText = this.showLunarStr === '0' ? this.lunarCalc.toLunar(now) : ''
+      this.gzText = this.showLunarStr === '0' ? this.lunarCalc.toGanzhi(now) : ''
 
       const sunDir = this.sunCalc.sunDirection(now)
       nativerender.updateSunDirection(sunDir)
@@ -143,7 +126,7 @@ struct Index {
           .shadow({ radius: 14, offsetY: 4, color: 0xCC000000 })
           .margin({ top: 4 })
 
-        if (this.showLunar && this.lunarText) {
+        if (this.showLunarStr === '0' && this.lunarText) {
           Text(this.lunarText)
             .fontSize(14)
             .fontColor('#C0D4EE')
@@ -152,7 +135,7 @@ struct Index {
             .margin({ top: 2 })
         }
 
-        if (this.showLunar && this.gzText) {
+        if (this.showLunarStr === '0' && this.gzText) {
           Text(this.gzText)
             .fontSize(11)
             .fontColor('#A0B8D8')

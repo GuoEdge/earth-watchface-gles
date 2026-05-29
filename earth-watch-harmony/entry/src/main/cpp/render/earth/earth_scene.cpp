@@ -2,9 +2,11 @@
 #include <GLES2/gl2.h>
 #include <cmath>
 #include <cstring>
+#include <vector>
 #include <hilog/log.h>
 
 static constexpr float PI = 3.14159265358979323846f;
+static constexpr float k2Pi = 6.28318530717958647692f;
 
 constexpr EarthScene::Palette EarthScene::PALETTES[5];
 constexpr EarthScene::ArcSlot EarthScene::ARC_SLOTS[4];
@@ -92,6 +94,12 @@ void EarthScene::updateConfig(const EarthSceneConfig& cfg) {
     config_ = cfg;
 }
 
+void EarthScene::updateSunDirection(const float sunDir[3]) {
+    data_.sunDir[0] = sunDir[0];
+    data_.sunDir[1] = sunDir[1];
+    data_.sunDir[2] = sunDir[2];
+}
+
 void EarthScene::updateData(const EarthSceneData& d) {
     data_ = d;
 }
@@ -146,7 +154,19 @@ void EarthScene::drawRim(const float* mvp, float cx, float cy, float ir) {
         float color[4];
         intToGlColor(pal.rim, alpha, color);
         float sw = 2.0f + k * 1.5f;
-        primitives_.drawColorStrip(mvp, nullptr, 0, color);
+        float outerR = ir + sw * 0.5f;
+        float innerR2 = ir - sw * 0.5f;
+        int segs = 260;
+        std::vector<GLfloat> verts(segs * 4);
+        for (int i = 0; i < segs; i++) {
+            float a1 = k2Pi * i / segs;
+            float a2 = k2Pi * (i + 1) / segs;
+            verts[i * 4]     = cx + outerR * cosf(a1);
+            verts[i * 4 + 1] = cy + outerR * sinf(a1);
+            verts[i * 4 + 2] = cx + innerR2 * cosf(a1);
+            verts[i * 4 + 3] = cy + innerR2 * sinf(a1);
+        }
+        primitives_.drawColorStrip(mvp, verts.data(), segs * 2, color);
     }
 }
 
@@ -158,12 +178,21 @@ void EarthScene::drawRimTicks(const float* mvp, float cx, float cy, float ir, fl
         float deg = i * 30.0f;
         float rad = (deg - 90.0f) * PI / 180.0f;
         float alpha = (i % 3 == 0) ? 220.0f / 255.0f : 150.0f / 255.0f;
-        float width = (i % 3 == 0) ? 5.0f * f : 3.5f * f;
         float color[4];
         intToGlColor(pal.rim, alpha, color);
         float x1 = cx + innerR * cosf(rad), y1 = cy + innerR * sinf(rad);
         float x2 = cx + outerR * cosf(rad), y2 = cy + outerR * sinf(rad);
-        primitives_.drawColorTriangles(mvp, nullptr, 0, color);
+        float w = (i % 3 == 0) ? 5.0f * f : 3.5f * f;
+        float nx = -sinf(rad), ny = cosf(rad);
+        GLfloat verts[] = {
+            x1 + nx * w * 0.5f, y1 + ny * w * 0.5f,
+            x2 + nx * w * 0.5f, y2 + ny * w * 0.5f,
+            x1 - nx * w * 0.5f, y1 - ny * w * 0.5f,
+            x2 - nx * w * 0.5f, y2 - ny * w * 0.5f,
+            x1 - nx * w * 0.5f, y1 - ny * w * 0.5f,
+            x2 + nx * w * 0.5f, y2 + ny * w * 0.5f,
+        };
+        primitives_.drawColorTriangles(mvp, verts, 6, color);
     }
 }
 
@@ -308,9 +337,8 @@ void EarthScene::renderInteractive(int width, int height, int64_t timeMs,
         overlay_.renderCloud(rotYRad, cloudDrift);
     }
 
-    if (nightOverlayTex_ != 0) {
-        overlay_.renderTerminator(rotYRad, asinf(data_.sunDir[1]));
-    }
+    overlay_.setSunDirection(data_.sunDir);
+    overlay_.renderTerminator(rotYRad, asinf(data_.sunDir[1]));
 
     ensureAtmoTexture(ir);
     if (atmoLoaded_) {
@@ -368,16 +396,38 @@ void EarthScene::renderAmbientMode(int width, int height,
 
     float rimAlpha = 100.0f / 255.0f;
     float rimColor[4]; intToGlColor(0xFFCCCCCC, rimAlpha, rimColor);
-    primitives_.drawColorStrip(mvp, nullptr, 0, rimColor);
+    float outerR2 = ir + 1.0f;
+    float innerR3 = ir - 1.0f;
+    int rimSegs = 260;
+    std::vector<GLfloat> rimVerts(rimSegs * 4);
+    for (int i = 0; i < rimSegs; i++) {
+        float a1 = k2Pi * i / rimSegs;
+        rimVerts[i * 4]     = cx + outerR2 * cosf(a1);
+        rimVerts[i * 4 + 1] = cy + outerR2 * sinf(a1);
+        rimVerts[i * 4 + 2] = cx + innerR3 * cosf(a1);
+        rimVerts[i * 4 + 3] = cy + innerR3 * sinf(a1);
+    }
+    primitives_.drawColorStrip(mvp, rimVerts.data(), rimSegs * 2, rimColor);
 
     float innerR = ir - 8.0f * f, outerR = ir - 2.0f;
     for (int i = 0; i < 12; i++) {
         float deg = i * 30.0f;
         float rad = (deg - 90.0f) * PI / 180.0f;
         float alpha = (i % 3 == 0) ? 1.0f : 180.0f / 255.0f;
-        float width = (i % 3 == 0) ? 5.0f * f : 3.5f * f;
+        float w = (i % 3 == 0) ? 5.0f * f : 3.5f * f;
         float tickColor[4] = {0.878f, 0.878f, 0.878f, alpha};
-        primitives_.drawColorTriangles(mvp, nullptr, 0, tickColor);
+        float x1 = cx + innerR * cosf(rad), y1 = cy + innerR * sinf(rad);
+        float x2 = cx + outerR * cosf(rad), y2 = cy + outerR * sinf(rad);
+        float nx = -sinf(rad), ny = cosf(rad);
+        GLfloat verts[] = {
+            x1 + nx * w * 0.5f, y1 + ny * w * 0.5f,
+            x2 + nx * w * 0.5f, y2 + ny * w * 0.5f,
+            x1 - nx * w * 0.5f, y1 - ny * w * 0.5f,
+            x2 - nx * w * 0.5f, y2 - ny * w * 0.5f,
+            x1 - nx * w * 0.5f, y1 - ny * w * 0.5f,
+            x2 + nx * w * 0.5f, y2 + ny * w * 0.5f,
+        };
+        primitives_.drawColorTriangles(mvp, verts, 6, tickColor);
     }
 
     const Palette& pal = PALETTES[config_.accentIdx];

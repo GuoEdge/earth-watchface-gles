@@ -211,7 +211,7 @@ static void mat4LookAt(float* out, float ex, float ey, float ez,
     out[8]=sz; out[9]=uz2; out[10]=-fz; out[11]=0;
     out[12]=-(sx*ex+sy*ey+sz*ez);
     out[13]=-(ux2*ex+uy2*ey+uz2*ez);
-    out[14]=-(-fx*ex+-fy*ey+-fz*ez);
+    out[14]=-(-fx*ex-fy*ey-fz*ez);
     out[15]=1;
 }
 

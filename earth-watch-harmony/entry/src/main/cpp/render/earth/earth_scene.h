@@ -40,6 +40,7 @@ public:
                      bool isAmbient);
     void requestSpin();
     void updateConfig(const EarthSceneConfig& cfg);
+    void updateSunDirection(const float sunDir[3]);
     void updateData(const EarthSceneData& data);
     void loadDayTexture(const uint8_t* data, int w, int h);
     void loadNightTexture(const uint8_t* data, int w, int h);
