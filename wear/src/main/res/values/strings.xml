@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_face_description">Earth Live - 3D地球表盘</string>
+    <bool name="watch_face_instance_service_enabled">true</bool>
+</resources>

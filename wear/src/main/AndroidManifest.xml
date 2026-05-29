@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-feature android:name="android.hardware.type.watch" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA" />
+
+    <!-- Samsung Watch Face privileged permissions (Galaxy Watch / One UI Watch) -->
+    <uses-permission android:name="com.samsung.android.watch.watchface.companionhelper.READ_DATABASE" />
+    <uses-permission android:name="com.samsung.android.watch.watchface.companionhelper.WRITE_DATABASE" />
+    <uses-permission android:name="com.samsung.android.watch.watchface.hideinformation.setting.READ_HIDE_INFORMATION" />
+
+    <application android:allowBackup="true" android:label="Earth Live">
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
+        <uses-library
+            android:name="com.google.android.wearable"
+            android:required="false" />
+        <service
+            android:name=".EarthWatchFaceService"
+            android:exported="true"
+            android:label="Earth Live"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+                <category android:name="com.google.android.wearable.watchface.category.WATCH_FACE" />
+                <category android:name="com.google.android.wearable.watchface.category.COMPLICATION" />
+            </intent-filter>
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/watch_face" />
+            <meta-data
+                android:name="com.google.android.wearable.watchface.preview"
+                android:resource="@drawable/preview_earth" />
+            <meta-data
+                android:name="com.google.android.wearable.watchface.preview_circular"
+                android:resource="@drawable/preview_earth" />
+            <meta-data
+                android:name="com.google.android.wearable.watchface.wearableConfigurationAction"
+                android:value="androidx.wear.watchface.editor.action.WATCH_FACE_EDITOR" />
+            <meta-data
+                android:name="com.google.android.wearable.watchface.companionConfigurationAction"
+                android:value="com.earthwatch.face.CONFIG_COMPANION" />
+            <meta-data
+                android:name="com.google.android.wearable.watchface.companionBuiltinConfigurationEnabled"
+                android:value="true" />
+            <meta-data
+                android:name="androidx.wear.watchface.MULTIPLE_INSTANCES_ALLOWED"
+                android:value="true" />
+            <meta-data
+                android:name="android.service.wallpaper.square_mode"
+                android:value="true" />
+        </service>
+
+        <activity
+            android:name=".EarthConfigActivity"
+            android:exported="true"
+            android:launchMode="standard"
+            android:label="Earth Live 设置"
+            android:theme="@android:style/Theme.DeviceDefault.Light">
+            <intent-filter>
+                <action android:name="androidx.wear.watchface.editor.action.WATCH_FACE_EDITOR" />
+                <category android:name="com.google.android.wearable.watchface.category.WEARABLE_CONFIGURATION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".InstanceRemovedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.wear.services.watchface.action.INSTANCE_REMOVED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
