@@ -332,6 +332,9 @@ void EarthScene::renderInteractive(int width, int height, int64_t timeMs,
     orthoMvp(mvp, width, height);
 
     float rotYRad = ry * PI / 180.0f;
+    float earthCx = cx;
+    float earthCy = cy - off;
+    overlay_.setCenter(earthCx, earthCy);
     if (config_.showClouds && cloudLoaded_) {
         float cloudDrift = 0;
         overlay_.renderCloud(rotYRad, cloudDrift);

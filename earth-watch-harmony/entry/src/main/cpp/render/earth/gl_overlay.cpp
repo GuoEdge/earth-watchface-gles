@@ -327,6 +327,11 @@ void GlOverlay::setSunDirection(const float sunDir[3]) {
     customSunDirSet_ = true;
 }
 
+void GlOverlay::setCenter(float cx, float cy) {
+    centerX_ = cx;
+    centerY_ = cy;
+}
+
 void GlOverlay::release() {
     if (progTex_ != 0) { glDeleteProgram(progTex_); progTex_ = 0; }
     if (progCloud_ != 0) { glDeleteProgram(progCloud_); progCloud_ = 0; }

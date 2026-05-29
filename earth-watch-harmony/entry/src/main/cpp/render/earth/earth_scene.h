@@ -5,6 +5,8 @@
 #include "gl_overlay.h"
 #include <cstdint>
 
+extern EarthScene* g_scene;
+
 struct EarthSceneConfig {
     int accentIdx = 0;
     bool showLunar = true;

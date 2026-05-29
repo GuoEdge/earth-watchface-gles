@@ -10,6 +10,7 @@ public:
     void renderTerminator(float rotY, float sunDeclination);
     void renderAtmosphere();
     void setSunDirection(const float sunDir[3]);
+    void setCenter(float cx, float cy);
     void release();
 
     void initClouds(const uint8_t* data, int w, int h);

@@ -4,7 +4,7 @@
 #include "render/plugin_render.h"
 #include "render/earth/earth_scene.h"
 
-static EarthScene* g_scene = nullptr;
+EarthScene* g_scene = nullptr;
 
 static napi_value InitScene(napi_env env, napi_callback_info info) {
     size_t argc = 2;
@@ -49,11 +49,15 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     std::string lunarText;
     napi_value lunarVal = args[10];
     if (lunarVal != nullptr) {
-        size_t lunarLen = 0;
-        napi_get_value_string_utf8(env, lunarVal, nullptr, 0, &lunarLen);
-        if (lunarLen > 0) {
-            lunarText.resize(lunarLen);
-            napi_get_value_string_utf8(env, lunarVal, &lunarText[0], lunarLen + 1, &lunarLen);
+        napi_valuetype vtype = napi_undefined;
+        napi_typeof(env, lunarVal, &vtype);
+        if (vtype == napi_string) {
+            size_t lunarLen = 0;
+            napi_get_value_string_utf8(env, lunarVal, nullptr, 0, &lunarLen);
+            if (lunarLen > 0) {
+                lunarText.resize(lunarLen);
+                napi_get_value_string_utf8(env, lunarVal, &lunarText[0], lunarLen + 1, &lunarLen);
+            }
         }
     }
 
@@ -123,31 +127,30 @@ static napi_value RequestSpin(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
-static napi_value RegisterCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1];
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+EXTERN_C_START
+napi_value Init(napi_env env, napi_value exports) {
+    napi_value exportInstance = nullptr;
+    if (napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &exportInstance) != napi_ok) {
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0x3200, "EarthWatch", "Init: napi_get_named_property fail");
+        return exports;
+    }
 
-    napi_value exportInstance = args[0];
     OH_NativeXComponent* nativeXComponent = nullptr;
-    napi_unwrap(env, exportInstance, reinterpret_cast<void**>(&nativeXComponent));
+    if (napi_unwrap(env, exportInstance, reinterpret_cast<void**>(&nativeXComponent)) != napi_ok) {
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0x3200, "EarthWatch", "Init: napi_unwrap fail");
+        return exports;
+    }
 
     if (nativeXComponent) {
         earthwatch::PluginRender::RegisterCallback(nativeXComponent);
     }
 
-    return nullptr;
-}
-
-EXTERN_C_START
-napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
         {"initScene", nullptr, InitScene, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"renderFrame", nullptr, RenderFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateSunDirection", nullptr, UpdateSunDirection, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateConfig", nullptr, UpdateConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"requestSpin", nullptr, RequestSpin, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"registerCallback", nullptr, RegisterCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

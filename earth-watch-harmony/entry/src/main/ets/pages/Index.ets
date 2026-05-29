@@ -25,7 +25,6 @@ struct Index {
   private sunCalc: SunCalculator = new SunCalculator()
   private lunarCalc: LunarCalendar = new LunarCalendar()
   private weatherFetcher: WeatherFetcher = new WeatherFetcher()
-  private xComponentController: XComponentController = new XComponentController()
   private surfaceWidth: number = 466
   private surfaceHeight: number = 466
   private animTimer: number = -1
@@ -98,15 +97,13 @@ struct Index {
   build() {
     Stack() {
       XComponent({
+        id: 'earthCanvas',
         type: XComponentType.TEXTURE,
-        controller: this.xComponentController
+        libraryname: 'nativerender'
       })
         .width('100%')
         .height('100%')
         .onLoad((context?: object) => {
-          if (context) {
-            nativerender.registerCallback(context)
-          }
           this.startRenderLoop()
         })
         .onDestroy(() => {
