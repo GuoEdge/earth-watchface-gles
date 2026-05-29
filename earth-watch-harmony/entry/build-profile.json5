@@ -1,0 +1,17 @@
+{
+  "api": {
+    "compilerType": "arkTS",
+    "compatibleSdkVersion": 12,
+    "targetSdkVersion": 12
+  },
+  "buildOption": {
+    "arkOptions": {
+      "enableNativeLib": true
+    },
+    "externalNativeOptions": {
+      "path": "./src/main/cpp/CMakeLists.txt",
+      "arguments": "",
+      "cppFlags": ""
+    }
+  }
+}

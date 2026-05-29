@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "EarthWatch entry module",
+  "main": "",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ohos/xcomponent": "file:./src/main/cpp/types/libnativerender"
+  }
+}
