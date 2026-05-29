@@ -1,5 +1,5 @@
 #include "earth_scene.h"
-#include <GLES2/gl2.h>
+#include <GLES3/gl3.h>
 #include <cmath>
 #include <cstring>
 #include <vector>

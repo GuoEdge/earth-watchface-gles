@@ -21,7 +21,8 @@ add_library(nativerender SHARED
 )
 
 find_library(EGL-lib EGL)
-find_library(GLES-lib GLESv2)
+find_library(GLES-lib GLESv3)
+find_library(ace-ndk-lib ace_ndk.z)
 find_library(native-window-lib native_window)
 find_library(hilog-lib hilog)
 find_library(napi-lib ace_napi)
@@ -30,6 +31,7 @@ find_library(xcomponent-lib native_xcomponent)
 target_link_libraries(nativerender PUBLIC
     ${EGL-lib}
     ${GLES-lib}
+    ${ace-ndk-lib}
     ${native-window-lib}
     ${hilog-lib}
     ${napi-lib}

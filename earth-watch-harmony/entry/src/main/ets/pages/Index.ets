@@ -20,18 +20,17 @@ struct Index {
   @State lunarText: string = ''
   @State gzText: string = ''
   @State isAmbient: boolean = false
+  @State renderStarted: boolean = false
 
   private sunCalc: SunCalculator = new SunCalculator()
   private lunarCalc: LunarCalendar = new LunarCalendar()
   private weatherFetcher: WeatherFetcher = new WeatherFetcher()
-  private xComponentId: string = 'earthCanvas'
+  private xComponentController: XComponentController = new XComponentController()
   private surfaceWidth: number = 466
   private surfaceHeight: number = 466
-  private lastFrameMs: number = 0
   private animTimer: number = -1
 
   aboutToAppear() {
-    this.loadConfig()
     this.weatherFetcher.startFetching()
   }
 
@@ -40,10 +39,6 @@ struct Index {
       clearInterval(this.animTimer)
     }
     this.weatherFetcher.stopFetching()
-  }
-
-  loadConfig() {
-    this.pushConfig()
   }
 
   pushConfig() {
@@ -63,6 +58,9 @@ struct Index {
   }
 
   startRenderLoop() {
+    if (this.renderStarted) return
+    this.renderStarted = true
+
     nativerender.initScene(this.surfaceWidth, this.surfaceHeight)
     this.pushConfig()
 
@@ -100,14 +98,23 @@ struct Index {
   build() {
     Stack() {
       XComponent({
-        id: this.xComponentId,
-        type: XComponentType.SURFACE,
-        libraryname: 'nativerender'
+        type: XComponentType.TEXTURE,
+        controller: this.xComponentController
       })
         .width('100%')
         .height('100%')
-        .onLoad(() => {
+        .onLoad((context?: object) => {
+          if (context) {
+            nativerender.registerCallback(context)
+          }
           this.startRenderLoop()
+        })
+        .onDestroy(() => {
+          this.renderStarted = false
+          if (this.animTimer >= 0) {
+            clearInterval(this.animTimer)
+            this.animTimer = -1
+          }
         })
 
       Column() {
@@ -146,6 +153,7 @@ struct Index {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Center)
+      .hitTestBehavior(HitTestMode.Transparent)
     }
     .width('100%')
     .height('100%')
