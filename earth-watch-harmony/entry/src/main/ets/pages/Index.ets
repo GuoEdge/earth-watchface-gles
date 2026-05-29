@@ -79,17 +79,26 @@ struct Index {
   private fontRegistered: boolean = false
   private texturesLoaded: boolean = false
 
+  private notifRefreshTimer: number = -1
+
   aboutToAppear() {
     this.weatherFetcher.startFetching()
     this.locationProvider.requestLocation(getContext(this)).then(() => {
       let loc = this.locationProvider.currentLocation
       this.weatherFetcher.updateLocation(loc.latitude, loc.longitude)
     })
+    this.notifRefreshTimer = setInterval(() => {
+      this.notifProvider.refreshCount()
+    }, 30000)
   }
 
   aboutToDisappear() {
     this.stopRenderLoop()
     this.weatherFetcher.stopFetching()
+    if (this.notifRefreshTimer >= 0) {
+      clearInterval(this.notifRefreshTimer)
+      this.notifRefreshTimer = -1
+    }
   }
 
   onPageShow() {

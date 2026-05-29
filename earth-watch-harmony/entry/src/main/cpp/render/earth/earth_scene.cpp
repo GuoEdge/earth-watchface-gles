@@ -99,11 +99,14 @@ void EarthScene::updateSunDirection(const float sunDir[3]) {
 }
 
 void EarthScene::updateData(const EarthSceneData& d) {
-    float savedSun[3] = {data_.sunDir[0], data_.sunDir[1], data_.sunDir[2]};
-    data_ = d;
-    data_.sunDir[0] = savedSun[0];
-    data_.sunDir[1] = savedSun[1];
-    data_.sunDir[2] = savedSun[2];
+    data_.batteryPct = d.batteryPct;
+    data_.isCharging = d.isCharging;
+    data_.batteryIsLow = d.batteryIsLow;
+    data_.temperature = d.temperature;
+    data_.uvIndex = d.uvIndex;
+    data_.feelsLike = d.feelsLike;
+    data_.precipProb = d.precipProb;
+    data_.notifCount = d.notifCount;
 }
 
 void EarthScene::requestSpin() {
