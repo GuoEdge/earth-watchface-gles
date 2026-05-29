@@ -273,6 +273,26 @@ static napi_value LoadTextures(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
+static napi_value GetSurfaceSize(napi_env env, napi_callback_info info) {
+    napi_value result;
+    napi_create_object(env, &result);
+
+    auto* instance = earthwatch::PluginRender::GetInstanceById("");
+    int width = 0, height = 0;
+    if (instance) {
+        width = instance->getSurfaceWidth();
+        height = instance->getSurfaceHeight();
+    }
+
+    napi_value wVal, hVal;
+    napi_create_int32(env, width, &wVal);
+    napi_create_int32(env, height, &hVal);
+    napi_set_named_property(env, result, "width", wVal);
+    napi_set_named_property(env, result, "height", hVal);
+
+    return result;
+}
+
 extern "C" __attribute__((visibility("default"))) napi_value Init(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
@@ -284,6 +304,7 @@ extern "C" __attribute__((visibility("default"))) napi_value Init(napi_env env, 
         {"updateData", nullptr, UpdateData, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"destroyScene", nullptr, DestroyScene, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadTextures", nullptr, LoadTextures, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getSurfaceSize", nullptr, GetSurfaceSize, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
 
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

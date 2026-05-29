@@ -87,6 +87,9 @@ void PluginRender::RegisterCallback(OH_NativeXComponent* nativeXComponent)
 PluginRender* PluginRender::GetInstanceById(const std::string& id)
 {
     std::lock_guard<std::mutex> lock(instancesMutex_);
+    if (id.empty() && !instances_.empty()) {
+        return instances_.begin()->second;
+    }
     auto it = instances_.find(id);
     if (it != instances_.end()) {
         return it->second;

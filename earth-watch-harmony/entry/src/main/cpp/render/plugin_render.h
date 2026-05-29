@@ -38,6 +38,9 @@ public:
     static void MakeCurrentForRender();
     static void SwapBuffersAfterRender();
 
+    int getSurfaceWidth() const { return surfaceWidth_; }
+    int getSurfaceHeight() const { return surfaceHeight_; }
+
     void OnSurfaceCreated(OH_NativeXComponent* component, void* window);
     void OnSurfaceChanged(OH_NativeXComponent* component, void* window);
     void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window);

@@ -44,8 +44,6 @@ import nativerender from 'libnativerender.so'
 import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'
 import { WeatherFetcher } from '../model/WeatherFetcher'
-import font from '@ohos.font'
-import resourceManager from '@ohos.resourceManager'
 
 @Entry
 @Component
@@ -134,11 +132,12 @@ struct Index {
   registerFonts() {
     if (this.fontRegistered) return
     try {
-      font.registerFont({
+      let fontObj = this.getUIContext().getFont()
+      fontObj.registerFont({
         familyName: 'DSEG7Modern-Bold',
         familySrc: '$rawfile/textures/fonts/DSEG7Modern-Bold.ttf'
       })
-      font.registerFont({
+      fontObj.registerFont({
         familyName: 'DSEG7Classic-Bold',
         familySrc: '$rawfile/textures/fonts/DSEG7Classic-Bold.ttf'
       })
@@ -154,7 +153,10 @@ struct Index {
       let dayBuf = await mgr.getRawFileContent('textures/earth_day.jpg')
       let nightBuf = await mgr.getRawFileContent('textures/earth_night.png')
       let cloudBuf = await mgr.getRawFileContent('textures/earth_cloud.png')
-      nativerender.loadTextures(dayBuf.buffer, nightBuf.buffer, cloudBuf.buffer)
+      let dayArr = dayBuf.buffer.slice(dayBuf.byteOffset, dayBuf.byteOffset + dayBuf.byteLength)
+      let nightArr = nightBuf.buffer.slice(nightBuf.byteOffset, nightBuf.byteOffset + nightBuf.byteLength)
+      let cloudArr = cloudBuf.buffer.slice(cloudBuf.byteOffset, cloudBuf.byteOffset + cloudBuf.byteLength)
+      nativerender.loadTextures(dayArr, nightArr, cloudArr)
       this.texturesLoaded = true
     } catch (e) {
     }
@@ -166,7 +168,11 @@ struct Index {
 
     this.registerFonts()
 
-    if (this.surfaceWidth <= 0 || this.surfaceHeight <= 0) {
+    let size = nativerender.getSurfaceSize()
+    if (size.width > 0 && size.height > 0) {
+      this.surfaceWidth = size.width
+      this.surfaceHeight = size.height
+    } else {
       this.surfaceWidth = 466
       this.surfaceHeight = 466
     }
@@ -218,11 +224,6 @@ struct Index {
         .width('100%')
         .height('100%')
         .onLoad((context?: object) => {
-          if (context) {
-            let ctx = context as Record<string, number>
-            this.surfaceWidth = ctx.width || 466
-            this.surfaceHeight = ctx.height || 466
-          }
           this.startRenderLoop()
         })
         .onDestroy(() => {

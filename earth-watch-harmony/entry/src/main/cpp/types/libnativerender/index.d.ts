@@ -15,3 +15,4 @@ export const requestSpin: () => void;
 export const updateData: (data: object) => void;
 export const destroyScene: () => void;
 export const loadTextures: (dayBuf: ArrayBuffer, nightBuf: ArrayBuffer, cloudBuf: ArrayBuffer) => void;
+export const getSurfaceSize: () => { width: number, height: number };
