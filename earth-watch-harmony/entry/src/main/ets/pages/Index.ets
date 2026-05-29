@@ -3,6 +3,7 @@ import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'
 import { WeatherFetcher } from '../model/WeatherFetcher'
 import font from '@ohos.font'
+import resourceManager from '@ohos.resourceManager'
 
 @Entry
 @Component
@@ -30,6 +31,7 @@ struct Index {
   private surfaceHeight: number = 0
   private animTimer: number = -1
   private fontRegistered: boolean = false
+  private texturesLoaded: boolean = false
 
   aboutToAppear() {
     this.weatherFetcher.startFetching()
@@ -103,6 +105,19 @@ struct Index {
     }
   }
 
+  async loadTexturesAsync() {
+    if (this.texturesLoaded) return
+    try {
+      let mgr = getContext(this).resourceManager
+      let dayBuf = await mgr.getRawFileContent('textures/earth_day.jpg')
+      let nightBuf = await mgr.getRawFileContent('textures/earth_night.png')
+      let cloudBuf = await mgr.getRawFileContent('textures/earth_cloud.png')
+      nativerender.loadTextures(dayBuf.buffer, nightBuf.buffer, cloudBuf.buffer)
+      this.texturesLoaded = true
+    } catch (e) {
+    }
+  }
+
   startRenderLoop() {
     if (this.renderStarted) return
     this.renderStarted = true
@@ -117,6 +132,7 @@ struct Index {
     nativerender.initScene(this.surfaceWidth, this.surfaceHeight)
     this.pushConfig()
     this.pushSceneData()
+    this.loadTexturesAsync()
 
     this.animTimer = setInterval(() => {
       const now = new Date()

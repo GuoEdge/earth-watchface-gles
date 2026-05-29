@@ -94,6 +94,24 @@ PluginRender* PluginRender::GetInstanceById(const std::string& id)
     return nullptr;
 }
 
+void PluginRender::MakeCurrentForRender()
+{
+    std::lock_guard<std::mutex> lock(instancesMutex_);
+    if (!instances_.empty()) {
+        auto it = instances_.begin();
+        it->second->eglCore_.MakeCurrent();
+    }
+}
+
+void PluginRender::SwapBuffersAfterRender()
+{
+    std::lock_guard<std::mutex> lock(instancesMutex_);
+    if (!instances_.empty()) {
+        auto it = instances_.begin();
+        it->second->eglCore_.SwapBuffers();
+    }
+}
+
 void PluginRender::AddInstance(const std::string& id, PluginRender* instance)
 {
     std::lock_guard<std::mutex> lock(instancesMutex_);

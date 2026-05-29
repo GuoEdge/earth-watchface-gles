@@ -4,6 +4,9 @@
 #include "render/plugin_render.h"
 #include "render/earth/earth_scene.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "render/earth/stb_image.h"
+
 EarthScene* g_scene = nullptr;
 
 static napi_value InitScene(napi_env env, napi_callback_info info) {
@@ -62,8 +65,12 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
         }
     }
 
+    earthwatch::PluginRender::MakeCurrentForRender();
+
     g_scene->renderFrame(width, height, timeMs, hour, minute, second, nano,
                          month, day, dayOfWeek, lunarText.c_str(), "", isAmbient);
+
+    earthwatch::PluginRender::SwapBuffersAfterRender();
 
     return nullptr;
 }
@@ -188,6 +195,40 @@ static napi_value DestroyScene(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
+static bool decodeAndLoad(napi_env env, napi_value arrayBuffer,
+                           void (EarthScene::*loader)(const uint8_t*, int, int)) {
+    size_t byteLength = 0;
+    void* data = nullptr;
+    napi_get_arraybuffer_info(env, arrayBuffer, &data, &byteLength);
+    if (!data || byteLength == 0) return false;
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load_from_memory(
+        static_cast<const stbi_uc*>(data), static_cast<int>(byteLength),
+        &w, &h, &channels, 4);
+    if (!pixels) return false;
+
+    (g_scene->*loader)(pixels, w, h);
+    stbi_image_free(pixels);
+    return true;
+}
+
+static napi_value LoadTextures(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    if (!g_scene || argc < 3) return nullptr;
+
+    earthwatch::PluginRender::MakeCurrentForRender();
+
+    decodeAndLoad(env, args[0], &EarthScene::loadDayTexture);
+    decodeAndLoad(env, args[1], &EarthScene::loadNightTexture);
+    decodeAndLoad(env, args[2], &EarthScene::loadCloudTexture);
+
+    return nullptr;
+}
+
 EXTERN_C_START
 napi_value Init(napi_env env, napi_value exports) {
     napi_value exportInstance = nullptr;
@@ -214,6 +255,7 @@ napi_value Init(napi_env env, napi_value exports) {
         {"requestSpin", nullptr, RequestSpin, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateData", nullptr, UpdateData, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"destroyScene", nullptr, DestroyScene, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"loadTextures", nullptr, LoadTextures, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

@@ -17,6 +17,8 @@ namespace earthwatch {
 class PluginRender {
 public:
     static void RegisterCallback(OH_NativeXComponent* nativeXComponent);
+    static void MakeCurrentForRender();
+    static void SwapBuffersAfterRender();
 
     void OnSurfaceCreated(OH_NativeXComponent* component, void* window);
     void OnSurfaceChanged(OH_NativeXComponent* component, void* window);
