@@ -12,38 +12,40 @@
  *
  * 渲染循环（由 ArkTS 主线程驱动，~30fps）：
  *   setInterval(33ms) → {
+ *     检测屏幕状态(AOD/Interactive),
  *     计算时间/农历/太阳方向,
  *     updateSunDirection(),
  *     pushSceneData() → updateData() [天气/电池/通知],
  *     renderFrame() → MakeCurrent → g_scene->renderFrame() → SwapBuffers
  *   }
  *
- * 纹理加载（异步，仅一次）：
- *   loadTexturesAsync() → resourceManager.getRawFileContent() → nativerender.loadTextures()
- *   → NAPI 层 stb_image 解码 → g_scene->loadDay/Night/CloudTexture()
+ * 数据提供者（Provider）：
+ *   BatteryProvider  — 电池电量/充电状态（@kit.BasicServicesKit batteryInfo）
+ *   NotifProvider    — 通知计数（@kit.NotificationKit，三方应用仅能获取本应用通知）
+ *   LocationProvider — GPS定位（@kit.LocationKit，需用户授权 APPROXIMATELY_LOCATION）
+ *   ScreenStateProvider — 屏幕亮/熄状态（@kit.BasicServicesKit power.isActive）
+ *   WeatherFetcher   — 天气数据（Open-Meteo API，使用 LocationProvider 的坐标）
  *
  * 配置持久化：
  *   @StorageLink 装饰器自动同步 PersistentStorage，
  *   字符串 '0'/'1' 表示关闭/开启（showLunar, showSensors, showClouds）。
  *
  * 生命周期：
- *   aboutToAppear → 启动天气获取
+ *   aboutToAppear → 启动天气获取 + 请求定位权限
  *   onLoad → 启动渲染循环 + 加载纹理 + 注册字体
  *   onPageHide → 暂停渲染循环（省电）
  *   onPageShow → 恢复渲染循环
  *   onDestroy → 停止渲染 + 销毁 Native 场景
- *
- * 已知限制（功能增强项）：
- *   - 电池信息硬编码为 0（需接入 @ohos.batteryInfo）
- *   - 通知计数硬编码为 0（需接入 @ohos.notification）
- *   - 天气位置硬编码上海（需接入 @ohos.geoLocationManager）
- *   - AOD 状态始终为 false（需监听屏幕状态）
  */
 
 import nativerender from 'libnativerender.so'
 import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'
 import { WeatherFetcher } from '../model/WeatherFetcher'
+import { BatteryProvider } from '../model/BatteryProvider'
+import { NotifProvider } from '../model/NotifProvider'
+import { LocationProvider } from '../model/LocationProvider'
+import { ScreenStateProvider } from '../model/ScreenStateProvider'
 
 @Entry
 @Component
@@ -67,6 +69,10 @@ struct Index {
   private sunCalc: SunCalculator = new SunCalculator()
   private lunarCalc: LunarCalendar = new LunarCalendar()
   private weatherFetcher: WeatherFetcher = new WeatherFetcher()
+  private batteryProvider: BatteryProvider = new BatteryProvider()
+  private notifProvider: NotifProvider = new NotifProvider()
+  private locationProvider: LocationProvider = new LocationProvider()
+  private screenState: ScreenStateProvider = new ScreenStateProvider()
   private surfaceWidth: number = 0
   private surfaceHeight: number = 0
   private animTimer: number = -1
@@ -75,6 +81,10 @@ struct Index {
 
   aboutToAppear() {
     this.weatherFetcher.startFetching()
+    this.locationProvider.requestLocation(getContext(this)).then(() => {
+      let loc = this.locationProvider.currentLocation
+      this.weatherFetcher.updateLocation(loc.latitude, loc.longitude)
+    })
   }
 
   aboutToDisappear() {
@@ -118,14 +128,14 @@ struct Index {
 
   pushSceneData() {
     nativerender.updateData({
-      batteryPct: 0,
-      isCharging: false,
-      batteryIsLow: false,
+      batteryPct: this.batteryProvider.batteryPct,
+      isCharging: this.batteryProvider.isCharging,
+      batteryIsLow: this.batteryProvider.isLow,
       temperature: this.weatherFetcher.temperature,
       uvIndex: this.weatherFetcher.uvIndex,
       feelsLike: this.weatherFetcher.feelsLike,
       precipProb: this.weatherFetcher.precipProb,
-      notifCount: 0
+      notifCount: this.notifProvider.getCount()
     })
   }
 
@@ -183,6 +193,8 @@ struct Index {
     this.loadTexturesAsync()
 
     this.animTimer = setInterval(() => {
+      this.isAmbient = this.screenState.isAmbient
+
       const now = new Date()
       const timeMs = now.getTime()
       this.currentTime = `${this.pad2(now.getHours())}:${this.pad2(now.getMinutes())}`

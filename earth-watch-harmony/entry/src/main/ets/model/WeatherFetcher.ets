@@ -11,9 +11,9 @@
  *   precipProb   — 降水概率 (0-100%)
  *   display      — 显示字符串（图标+温度，如"⛅25°"）
  *
- * 已知限制：
- *   - 坐标硬编码为上海 (31.2304, 121.4737)
- *   - 应接入 @ohos.geoLocationManager 获取用户当前位置
+ * 位置更新：
+ *   默认坐标上海，通过 updateLocation() 更新为用户实际位置。
+ *   LocationProvider 在获取权限后调用 updateLocation()。
  */
 import http from '@ohos.net.http'
 
@@ -24,6 +24,8 @@ export class WeatherFetcher {
   private cachedTemperature: number = NaN
   private cachedFeelsLike: number = NaN
   private cachedPrecipProb: number = -1
+  private lat: number = 31.2304
+  private lon: number = 121.4737
   private lastFetch: number = 0
   private isFetching: boolean = false
   private timer: number = -1
@@ -63,14 +65,21 @@ export class WeatherFetcher {
     }
   }
 
+  updateLocation(latitude: number, longitude: number) {
+    if (latitude !== this.lat || longitude !== this.lon) {
+      this.lat = latitude
+      this.lon = longitude
+      this.lastFetch = 0
+      this.fetch()
+    }
+  }
+
   private fetch() {
     const now = Date.now()
     if (now - this.lastFetch < WeatherFetcher.REFRESH_MS || this.isFetching) return
     this.isFetching = true
 
-    const lat = 31.2304
-    const lon = 121.4737
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${this.lat}&longitude=${this.lon}` +
       `&current=temperature_2m,apparent_temperature,weather_code,uv_index` +
       `&hourly=weather_code,precipitation_probability&timezone=auto&forecast_hours=4`
 

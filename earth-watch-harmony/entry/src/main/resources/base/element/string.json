@@ -2,7 +2,8 @@
   "string": [
     { "name": "module_desc", "value": "EarthWatch 3D Earth Watch Face" },
     { "name": "ability_desc", "value": "EarthWatch Watch Face" },
-    { "name": "ability_label", "value": "EarthWatch" }
+    { "name": "ability_label", "value": "EarthWatch" },
+    { "name": "location_reason", "value": "Used to get local weather for your current location" }
   ],
   "color": [
     { "name": "start_window_background", "value": "#000006" }
