@@ -210,7 +210,6 @@ void PluginRender::OnSurfaceCreated(OH_NativeXComponent* component, void* window
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     surfaceReady_.store(true);
-    StartRenderLoop();
 
     OH_LOG_Info(LOG_APP, "OnSurfaceCreated completed: %{public}d x %{public}d", surfaceWidth_, surfaceHeight_);
 }
@@ -336,6 +335,8 @@ void PluginRender::RenderLoop()
 
 void PluginRender::RenderFrame()
 {
+    if (!surfaceReady_.load()) return;
+
     if (eglCore_.IsContextLost()) {
         OH_LOG_Error(LOG_APP, "EGL context lost detected");
         surfaceReady_.store(false);

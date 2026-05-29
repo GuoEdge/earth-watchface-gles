@@ -41,7 +41,8 @@ private:
     GLuint atmoTexId_ = 0;
     GLuint terminatorTexId_ = 0;
 
-    float quadUv_[8] = {};
+    GLuint vboDyn_ = 0;
+    GLuint vboQuadUv_ = 0;
 
     GLuint progTex_ = 0;
     GLint uMvpTex_ = -1;

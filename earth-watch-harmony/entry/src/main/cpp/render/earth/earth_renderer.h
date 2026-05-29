@@ -8,8 +8,9 @@ public:
     EarthRenderer();
     ~EarthRenderer();
 
-    void init(int surfaceSize, const uint8_t* dayData, int dayW, int dayH,
-              const uint8_t* nightData, int nightW, int nightH);
+    void init(int surfaceSize);
+    void loadDayTexture(const uint8_t* data, int w, int h);
+    void loadNightTexture(const uint8_t* data, int w, int h);
     void render(int surfaceSize, float rotY, const float sunDir[3],
                 int vpX, int vpY);
     void release();

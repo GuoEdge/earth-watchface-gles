@@ -6,3 +6,5 @@ export const renderFrame: (width: number, height: number, timeMs: number,
 export const updateSunDirection: (sunDir: number[]) => void;
 export const updateConfig: (config: object) => void;
 export const requestSpin: () => void;
+export const updateData: (data: object) => void;
+export const destroyScene: () => void;

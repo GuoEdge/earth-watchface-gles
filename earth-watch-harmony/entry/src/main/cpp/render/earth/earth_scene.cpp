@@ -54,14 +54,12 @@ void EarthScene::initGl(int width, int height) {
     if (sz == bmpSize_) return;
 
     bmpSize_ = sz;
-    earth_.init(sz, nullptr, 0, 0, nullptr, 0, 0);
+    earth_.init(sz);
     primitives_.init();
     overlay_.init(width, height, fmin(width, height) / 2.0f - 12.0f);
     cloudLoaded_ = false;
     atmoLoaded_ = false;
     atmoIr_ = 0;
-    lastNightAng_ = NAN;
-    nightOverlayTex_ = 0;
 
     OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
                  "initGl sz=%{public}d w=%{public}d h=%{public}d", sz, width, height);
@@ -74,13 +72,13 @@ void EarthScene::init(int width, int height) {
 
 void EarthScene::loadDayTexture(const uint8_t* data, int w, int h) {
     if (!data) return;
-    earth_.init(bmpSize_, data, w, h, nullptr, 0, 0);
+    earth_.loadDayTexture(data, w, h);
     dayTexLoaded_ = true;
 }
 
 void EarthScene::loadNightTexture(const uint8_t* data, int w, int h) {
     if (!data) return;
-    earth_.init(bmpSize_, nullptr, 0, 0, data, w, h);
+    earth_.loadNightTexture(data, w, h);
     nightTexLoaded_ = true;
 }
 
@@ -101,7 +99,11 @@ void EarthScene::updateSunDirection(const float sunDir[3]) {
 }
 
 void EarthScene::updateData(const EarthSceneData& d) {
+    float savedSun[3] = {data_.sunDir[0], data_.sunDir[1], data_.sunDir[2]};
     data_ = d;
+    data_.sunDir[0] = savedSun[0];
+    data_.sunDir[1] = savedSun[1];
+    data_.sunDir[2] = savedSun[2];
 }
 
 void EarthScene::requestSpin() {
@@ -368,7 +370,6 @@ void EarthScene::renderAmbientMode(int width, int height,
     float r = fmin(width, height) / 2.0f;
     float ir = r - 12.0f;
     float f = r / 200.0f;
-    float off = ir * 0.45f;
 
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
@@ -377,22 +378,6 @@ void EarthScene::renderAmbientMode(int width, int height,
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    if (bmpSize_ > 0) {
-        int sz = bmpSize_;
-        int earthVpX = (width - sz) / 2;
-        int earthVpY = static_cast<int>((height - sz) / 2.0f - off);
-        earth_.render(sz, CHINA_RY, data_.sunDir, earthVpX, earthVpY);
-        resetGlState();
-        glViewport(0, 0, width, height);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        float mvp[16];
-        orthoMvp(mvp, width, height);
-        float darkCircle[4] = {0, 0, 0, 1.0f - 180.0f / 255.0f};
-        primitives_.drawColorTriangleFan(mvp, cx, cy + off, ir, darkCircle, 64);
-    }
 
     float mvp[16];
     orthoMvp(mvp, width, height);
@@ -464,10 +449,6 @@ void EarthScene::release() {
     earth_.release();
     primitives_.release();
     overlay_.release();
-    if (nightOverlayTex_) {
-        glDeleteTextures(1, &nightOverlayTex_);
-        nightOverlayTex_ = 0;
-    }
     bmpSize_ = 0;
     initialized_ = false;
     cloudLoaded_ = false;

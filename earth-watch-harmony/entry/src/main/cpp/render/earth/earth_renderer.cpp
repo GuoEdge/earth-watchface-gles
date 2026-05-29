@@ -169,8 +169,7 @@ void EarthRenderer::loadTexture(const uint8_t* data, int w, int h, bool isRgb, G
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void EarthRenderer::init(int surfaceSize, const uint8_t* dayData, int dayW, int dayH,
-                          const uint8_t* nightData, int nightW, int nightH) {
+void EarthRenderer::init(int surfaceSize) {
     if (initialized_ && initSize_ == surfaceSize) return;
     release();
     initSize_ = surfaceSize;
@@ -178,12 +177,19 @@ void EarthRenderer::init(int surfaceSize, const uint8_t* dayData, int dayW, int 
     createSphere(80, 192);
     compileShaders();
 
-    if (dayData) loadTexture(dayData, dayW, dayH, true, dayTex_);
-    if (nightData) loadTexture(nightData, nightW, nightH, true, nightTex_);
-
     initialized_ = true;
     OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
                  "EarthRenderer init sz=%{public}d prog=%{public}u", surfaceSize, progEarth_);
+}
+
+void EarthRenderer::loadDayTexture(const uint8_t* data, int w, int h) {
+    if (!data) return;
+    loadTexture(data, w, h, true, dayTex_);
+}
+
+void EarthRenderer::loadNightTexture(const uint8_t* data, int w, int h) {
+    if (!data) return;
+    loadTexture(data, w, h, false, nightTex_);
 }
 
 static void mat4Perspective(float* out, float fov, float aspect, float near, float far) {

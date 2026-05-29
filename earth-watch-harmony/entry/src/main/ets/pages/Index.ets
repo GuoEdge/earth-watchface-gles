@@ -2,14 +2,15 @@ import nativerender from 'libnativerender.so'
 import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'
 import { WeatherFetcher } from '../model/WeatherFetcher'
+import font from '@ohos.font'
 
 @Entry
 @Component
 struct Index {
   @StorageLink('accent_color') accentColorStr: string = '0'
-  @StorageLink('show_lunar') showLunarStr: string = '0'
-  @StorageLink('show_sensors') showSensorsStr: string = '0'
-  @StorageLink('show_clouds') showCloudsStr: string = '0'
+  @StorageLink('show_lunar') showLunarStr: string = '1'
+  @StorageLink('show_sensors') showSensorsStr: string = '1'
+  @StorageLink('show_clouds') showCloudsStr: string = '1'
   @StorageLink('animation_mode') animModeStr: string = '0'
   @StorageLink('arc_tl') arcTlStr: string = '0'
   @StorageLink('arc_tr') arcTrStr: string = '6'
@@ -25,27 +26,44 @@ struct Index {
   private sunCalc: SunCalculator = new SunCalculator()
   private lunarCalc: LunarCalendar = new LunarCalendar()
   private weatherFetcher: WeatherFetcher = new WeatherFetcher()
-  private surfaceWidth: number = 466
-  private surfaceHeight: number = 466
+  private surfaceWidth: number = 0
+  private surfaceHeight: number = 0
   private animTimer: number = -1
+  private fontRegistered: boolean = false
 
   aboutToAppear() {
     this.weatherFetcher.startFetching()
   }
 
   aboutToDisappear() {
+    this.stopRenderLoop()
+    this.weatherFetcher.stopFetching()
+  }
+
+  onPageShow() {
+    if (!this.renderStarted && this.surfaceWidth > 0) {
+      this.startRenderLoop()
+    }
+  }
+
+  onPageHide() {
+    this.stopRenderLoop()
+  }
+
+  stopRenderLoop() {
     if (this.animTimer >= 0) {
       clearInterval(this.animTimer)
+      this.animTimer = -1
     }
-    this.weatherFetcher.stopFetching()
+    this.renderStarted = false
   }
 
   pushConfig() {
     nativerender.updateConfig({
       accentIdx: parseInt(this.accentColorStr) || 0,
-      showLunar: this.showLunarStr === '0',
-      showSensors: this.showSensorsStr === '0',
-      showClouds: this.showCloudsStr === '0',
+      showLunar: this.showLunarStr === '1',
+      showSensors: this.showSensorsStr === '1',
+      showClouds: this.showCloudsStr === '1',
       animMode: parseInt(this.animModeStr) || 0,
       arcDataSource: [
         parseInt(this.arcTlStr) || 0,
@@ -56,23 +74,61 @@ struct Index {
     })
   }
 
+  pushSceneData() {
+    nativerender.updateData({
+      batteryPct: 0,
+      isCharging: false,
+      batteryIsLow: false,
+      temperature: this.weatherFetcher.temperature,
+      uvIndex: this.weatherFetcher.uvIndex,
+      feelsLike: this.weatherFetcher.feelsLike,
+      precipProb: this.weatherFetcher.precipProb,
+      notifCount: 0
+    })
+  }
+
+  registerFonts() {
+    if (this.fontRegistered) return
+    try {
+      font.registerFont({
+        familyName: 'DSEG7Modern-Bold',
+        familySrc: '$rawfile/textures/fonts/DSEG7Modern-Bold.ttf'
+      })
+      font.registerFont({
+        familyName: 'DSEG7Classic-Bold',
+        familySrc: '$rawfile/textures/fonts/DSEG7Classic-Bold.ttf'
+      })
+      this.fontRegistered = true
+    } catch (e) {
+    }
+  }
+
   startRenderLoop() {
     if (this.renderStarted) return
     this.renderStarted = true
 
+    this.registerFonts()
+
+    if (this.surfaceWidth <= 0 || this.surfaceHeight <= 0) {
+      this.surfaceWidth = 466
+      this.surfaceHeight = 466
+    }
+
     nativerender.initScene(this.surfaceWidth, this.surfaceHeight)
     this.pushConfig()
+    this.pushSceneData()
 
     this.animTimer = setInterval(() => {
       const now = new Date()
       const timeMs = now.getTime()
       this.currentTime = `${this.pad2(now.getHours())}:${this.pad2(now.getMinutes())}`
       this.currentDate = `${now.getMonth() + 1}月${now.getDate()}日 ${this.dow(now.getDay())}`
-      this.lunarText = this.showLunarStr === '0' ? this.lunarCalc.toLunar(now) : ''
-      this.gzText = this.showLunarStr === '0' ? this.lunarCalc.toGanzhi(now) : ''
+      this.lunarText = this.showLunarStr === '1' ? this.lunarCalc.toLunar(now) : ''
+      this.gzText = this.showLunarStr === '1' ? this.lunarCalc.toGanzhi(now) : ''
 
       const sunDir = this.sunCalc.sunDirection(now)
       nativerender.updateSunDirection(sunDir)
+      this.pushSceneData()
       nativerender.renderFrame(
         this.surfaceWidth, this.surfaceHeight,
         timeMs,
@@ -104,14 +160,16 @@ struct Index {
         .width('100%')
         .height('100%')
         .onLoad((context?: object) => {
+          if (context) {
+            let ctx = context as Record<string, number>
+            this.surfaceWidth = ctx.width || 466
+            this.surfaceHeight = ctx.height || 466
+          }
           this.startRenderLoop()
         })
         .onDestroy(() => {
-          this.renderStarted = false
-          if (this.animTimer >= 0) {
-            clearInterval(this.animTimer)
-            this.animTimer = -1
-          }
+          this.stopRenderLoop()
+          nativerender.destroyScene()
         })
 
       Column() {
@@ -130,7 +188,7 @@ struct Index {
           .shadow({ radius: 14, offsetY: 4, color: 0xCC000000 })
           .margin({ top: 4 })
 
-        if (this.showLunarStr === '0' && this.lunarText) {
+        if (this.showLunarStr === '1' && this.lunarText) {
           Text(this.lunarText)
             .fontSize(14)
             .fontColor('#C0D4EE')
@@ -139,7 +197,7 @@ struct Index {
             .margin({ top: 2 })
         }
 
-        if (this.showLunarStr === '0' && this.gzText) {
+        if (this.showLunarStr === '1' && this.gzText) {
           Text(this.gzText)
             .fontSize(11)
             .fontColor('#A0B8D8')

@@ -172,8 +172,7 @@ bool EglCore::IsContextLost() const
     if (!initialized_) {
         return true;
     }
-    EGLint error = eglGetError();
-    return error == EGL_CONTEXT_LOST;
+    return false;
 }
 
 int EglCore::GetWidth() const

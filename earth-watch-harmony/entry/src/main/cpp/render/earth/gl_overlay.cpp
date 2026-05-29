@@ -185,10 +185,13 @@ void GlOverlay::init(int width, int height, float innerRadius) {
         aUvCloud_    = glGetAttribLocation(progCloud_, "aUV");
     }
 
-    quadUv_[0] = 0.0f; quadUv_[1] = 1.0f;
-    quadUv_[2] = 1.0f; quadUv_[3] = 1.0f;
-    quadUv_[4] = 0.0f; quadUv_[5] = 0.0f;
-    quadUv_[6] = 1.0f; quadUv_[7] = 0.0f;
+    static const GLfloat quadUvData[] = {0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+
+    glGenBuffers(1, &vboDyn_);
+    glGenBuffers(1, &vboQuadUv_);
+    glBindBuffer(GL_ARRAY_BUFFER, vboQuadUv_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadUvData), quadUvData, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     sunDir_[0] = 0.0f;
     sunDir_[1] = 0.0f;
@@ -247,13 +250,20 @@ void GlOverlay::drawTexturedQuad(GLuint texId, float x, float y, float w,
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texId);
     glUniform1i(uTexTex_, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboDyn_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(pos), pos, GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(aPosTex_);
-    glVertexAttribPointer(aPosTex_, 2, GL_FLOAT, GL_FALSE, 0, pos);
+    glVertexAttribPointer(aPosTex_, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboQuadUv_);
     glEnableVertexAttribArray(aUvTex_);
-    glVertexAttribPointer(aUvTex_, 2, GL_FLOAT, GL_FALSE, 0, quadUv_);
+    glVertexAttribPointer(aUvTex_, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glDisableVertexAttribArray(aPosTex_);
     glDisableVertexAttribArray(aUvTex_);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void GlOverlay::drawCloudQuad(GLuint texId, float uOffset, float alpha,
@@ -281,13 +291,20 @@ void GlOverlay::drawCloudQuad(GLuint texId, float uOffset, float alpha,
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texId);
     glUniform1i(uTexCloud_, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboDyn_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(pos), pos, GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(aPosCloud_);
-    glVertexAttribPointer(aPosCloud_, 2, GL_FLOAT, GL_FALSE, 0, pos);
+    glVertexAttribPointer(aPosCloud_, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboQuadUv_);
     glEnableVertexAttribArray(aUvCloud_);
-    glVertexAttribPointer(aUvCloud_, 2, GL_FLOAT, GL_FALSE, 0, quadUv_);
+    glVertexAttribPointer(aUvCloud_, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glDisableVertexAttribArray(aPosCloud_);
     glDisableVertexAttribArray(aUvCloud_);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void GlOverlay::renderCloud(float rotY, float cloudOffset) {
@@ -338,6 +355,8 @@ void GlOverlay::release() {
     if (cloudTexId_ != 0) { glDeleteTextures(1, &cloudTexId_); cloudTexId_ = 0; }
     if (atmoTexId_ != 0) { glDeleteTextures(1, &atmoTexId_); atmoTexId_ = 0; }
     if (terminatorTexId_ != 0) { glDeleteTextures(1, &terminatorTexId_); terminatorTexId_ = 0; }
+    if (vboDyn_ != 0) { glDeleteBuffers(1, &vboDyn_); vboDyn_ = 0; }
+    if (vboQuadUv_ != 0) { glDeleteBuffers(1, &vboQuadUv_); vboQuadUv_ = 0; }
     cloudInited_ = false;
     customSunDirSet_ = false;
 }

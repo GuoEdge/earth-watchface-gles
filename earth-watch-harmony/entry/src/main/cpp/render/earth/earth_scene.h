@@ -96,9 +96,6 @@ private:
     bool atmoLoaded_ = false;
     float atmoIr_ = 0;
 
-    GLuint nightOverlayTex_ = 0;
-    float lastNightAng_ = NAN;
-
     struct Palette {
         int time; int hand; int second; int date; int lunar; int gz; int rim;
         int arcs[4];

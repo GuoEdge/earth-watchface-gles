@@ -34,6 +34,7 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
     int32_t month = 0, day = 0, dayOfWeek = 0;
     bool isAmbient = false;
 
+    if (argc < 12) return nullptr;
     napi_get_value_int32(env, args[0], &width);
     napi_get_value_int32(env, args[1], &height);
     napi_get_value_int64(env, args[2], &timeMs);
@@ -127,6 +128,66 @@ static napi_value RequestSpin(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
+static napi_value UpdateData(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    if (!g_scene || argc < 1) return nullptr;
+
+    EarthSceneData data;
+    napi_value obj = args[0];
+    napi_value val;
+
+    napi_get_named_property(env, obj, "batteryPct", &val);
+    double bp = 0;
+    napi_get_value_double(env, val, &bp);
+    data.batteryPct = static_cast<float>(bp);
+
+    napi_get_named_property(env, obj, "isCharging", &val);
+    napi_get_value_bool(env, val, &data.isCharging);
+
+    napi_get_named_property(env, obj, "batteryIsLow", &val);
+    napi_get_value_bool(env, val, &data.batteryIsLow);
+
+    napi_get_named_property(env, obj, "temperature", &val);
+    double temp = 0;
+    napi_get_value_double(env, val, &temp);
+    data.temperature = static_cast<float>(temp);
+
+    napi_get_named_property(env, obj, "uvIndex", &val);
+    double uv = -1;
+    napi_get_value_double(env, val, &uv);
+    data.uvIndex = static_cast<float>(uv);
+
+    napi_get_named_property(env, obj, "feelsLike", &val);
+    double fl = 0;
+    napi_get_value_double(env, val, &fl);
+    data.feelsLike = static_cast<float>(fl);
+
+    napi_get_named_property(env, obj, "precipProb", &val);
+    double pp = -1;
+    napi_get_value_double(env, val, &pp);
+    data.precipProb = static_cast<float>(pp);
+
+    napi_get_named_property(env, obj, "notifCount", &val);
+    int32_t nc = 0;
+    napi_get_value_int32(env, val, &nc);
+    data.notifCount = nc;
+
+    g_scene->updateData(data);
+    return nullptr;
+}
+
+static napi_value DestroyScene(napi_env env, napi_callback_info info) {
+    if (g_scene) {
+        g_scene->release();
+        delete g_scene;
+        g_scene = nullptr;
+    }
+    return nullptr;
+}
+
 EXTERN_C_START
 napi_value Init(napi_env env, napi_value exports) {
     napi_value exportInstance = nullptr;
@@ -151,6 +212,8 @@ napi_value Init(napi_env env, napi_value exports) {
         {"updateSunDirection", nullptr, UpdateSunDirection, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateConfig", nullptr, UpdateConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"requestSpin", nullptr, RequestSpin, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"updateData", nullptr, UpdateData, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"destroyScene", nullptr, DestroyScene, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;
