@@ -174,6 +174,19 @@ static napi_value RequestSpin(napi_env env, napi_callback_info info) {
     return nullptr;
 }
 
+static napi_value OnDragDelta(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    if (!g_scene || argc < 1) return nullptr;
+
+    double dx = 0;
+    napi_get_value_double(env, args[0], &dx);
+    g_scene->onDragDelta(static_cast<float>(dx));
+    return nullptr;
+}
+
 static napi_value UpdateData(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1];
@@ -215,11 +228,6 @@ static napi_value UpdateData(napi_env env, napi_callback_info info) {
     double pp = -1;
     napi_get_value_double(env, val, &pp);
     data.precipProb = static_cast<float>(pp);
-
-    napi_get_named_property(env, obj, "notifCount", &val);
-    int32_t nc = 0;
-    napi_get_value_int32(env, val, &nc);
-    data.notifCount = nc;
 
     g_scene->updateData(data);
     return nullptr;
@@ -301,6 +309,7 @@ extern "C" __attribute__((visibility("default"))) napi_value Init(napi_env env, 
         {"updateSunDirection", nullptr, UpdateSunDirection, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateConfig", nullptr, UpdateConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"requestSpin", nullptr, RequestSpin, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"onDragDelta", nullptr, OnDragDelta, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateData", nullptr, UpdateData, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"destroyScene", nullptr, DestroyScene, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadTextures", nullptr, LoadTextures, nullptr, nullptr, nullptr, napi_default, nullptr},

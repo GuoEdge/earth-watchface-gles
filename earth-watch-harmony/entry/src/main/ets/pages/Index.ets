@@ -10,21 +10,25 @@
  *   }
  *   TEXTURE 模式允许 ArkUI 组件叠加在 GL 渲染之上（SURFACE 模式不行）。
  *
+ * 触摸交互：
+ *   - 点击（Tap）→ requestSpin() 触发地球旋转动画（720° easeOutCubic）
+ *   - 拖拽（Drag）→ 实时旋转地球，手指水平移动控制经度旋转
+ *   触摸事件由 XComponent 接收（文字叠加层 hitTestBehavior=Transparent 不拦截）
+ *
  * 渲染循环（由 ArkTS 主线程驱动，~30fps）：
  *   setInterval(33ms) → {
  *     检测屏幕状态(AOD/Interactive),
  *     计算时间/农历/太阳方向,
  *     updateSunDirection(),
- *     pushSceneData() → updateData() [天气/电池/通知],
+ *     pushSceneData() → updateData() [天气/电池],
  *     renderFrame() → MakeCurrent → g_scene->renderFrame() → SwapBuffers
  *   }
  *
  * 数据提供者（Provider）：
- *   BatteryProvider  — 电池电量/充电状态（@kit.BasicServicesKit batteryInfo）
- *   NotifProvider    — 通知计数（@kit.NotificationKit，三方应用仅能获取本应用通知）
- *   LocationProvider — GPS定位（@kit.LocationKit，需用户授权 APPROXIMATELY_LOCATION）
+ *   BatteryProvider     — 电池电量/充电状态（@kit.BasicServicesKit batteryInfo）
+ *   LocationProvider    — GPS定位（@kit.LocationKit，需用户授权 APPROXIMATELY_LOCATION）
  *   ScreenStateProvider — 屏幕亮/熄状态（@kit.BasicServicesKit power.isActive）
- *   WeatherFetcher   — 天气数据（Open-Meteo API，使用 LocationProvider 的坐标）
+ *   WeatherFetcher      — 天气数据（Open-Meteo API，使用 LocationProvider 的坐标）
  *
  * 配置持久化：
  *   @StorageLink 装饰器自动同步 PersistentStorage，
@@ -43,7 +47,6 @@ import { SunCalculator } from '../model/SunCalculator'
 import { LunarCalendar } from '../model/LunarCalendar'
 import { WeatherFetcher } from '../model/WeatherFetcher'
 import { BatteryProvider } from '../model/BatteryProvider'
-import { NotifProvider } from '../model/NotifProvider'
 import { LocationProvider } from '../model/LocationProvider'
 import { ScreenStateProvider } from '../model/ScreenStateProvider'
 
@@ -70,7 +73,6 @@ struct Index {
   private lunarCalc: LunarCalendar = new LunarCalendar()
   private weatherFetcher: WeatherFetcher = new WeatherFetcher()
   private batteryProvider: BatteryProvider = new BatteryProvider()
-  private notifProvider: NotifProvider = new NotifProvider()
   private locationProvider: LocationProvider = new LocationProvider()
   private screenState: ScreenStateProvider = new ScreenStateProvider()
   private surfaceWidth: number = 0
@@ -78,8 +80,8 @@ struct Index {
   private animTimer: number = -1
   private fontRegistered: boolean = false
   private texturesLoaded: boolean = false
-
-  private notifRefreshTimer: number = -1
+  private lastTouchX: number = -1
+  private isDragging: boolean = false
 
   aboutToAppear() {
     this.weatherFetcher.startFetching()
@@ -87,18 +89,11 @@ struct Index {
       let loc = this.locationProvider.currentLocation
       this.weatherFetcher.updateLocation(loc.latitude, loc.longitude)
     })
-    this.notifRefreshTimer = setInterval(() => {
-      this.notifProvider.refreshCount()
-    }, 30000)
   }
 
   aboutToDisappear() {
     this.stopRenderLoop()
     this.weatherFetcher.stopFetching()
-    if (this.notifRefreshTimer >= 0) {
-      clearInterval(this.notifRefreshTimer)
-      this.notifRefreshTimer = -1
-    }
   }
 
   onPageShow() {
@@ -143,8 +138,7 @@ struct Index {
       temperature: this.weatherFetcher.temperature,
       uvIndex: this.weatherFetcher.uvIndex,
       feelsLike: this.weatherFetcher.feelsLike,
-      precipProb: this.weatherFetcher.precipProb,
-      notifCount: this.notifProvider.getCount()
+      precipProb: this.weatherFetcher.precipProb
     })
   }
 
@@ -250,6 +244,29 @@ struct Index {
         .onDestroy(() => {
           this.stopRenderLoop()
           nativerender.destroyScene()
+        })
+        .onTouch((event: TouchEvent) => {
+          if (this.isAmbient) return
+          let touch = event.touches[0]
+          if (event.type === TouchType.Down) {
+            this.lastTouchX = touch.x
+            this.isDragging = false
+          } else if (event.type === TouchType.Move) {
+            if (this.lastTouchX >= 0) {
+              let dx = touch.x - this.lastTouchX
+              if (Math.abs(dx) > 2) {
+                this.isDragging = true
+                nativerender.onDragDelta(dx)
+              }
+              this.lastTouchX = touch.x
+            }
+          } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+            if (!this.isDragging) {
+              nativerender.requestSpin()
+            }
+            this.lastTouchX = -1
+            this.isDragging = false
+          }
         })
 
       Column() {

@@ -106,7 +106,6 @@ void EarthScene::updateData(const EarthSceneData& d) {
     data_.uvIndex = d.uvIndex;
     data_.feelsLike = d.feelsLike;
     data_.precipProb = d.precipProb;
-    data_.notifCount = d.notifCount;
 }
 
 void EarthScene::requestSpin() {
@@ -114,6 +113,11 @@ void EarthScene::requestSpin() {
         isAnimating_ = true;
         wakeTime_ = 0;
     }
+}
+
+void EarthScene::onDragDelta(float dx) {
+    dragOffset_ += dx * 0.5f;
+    isAnimating_ = false;
 }
 
 void EarthScene::ensureAtmoTexture(float ir) {
@@ -314,6 +318,8 @@ void EarthScene::renderInteractive(int width, int height, int64_t timeMs,
         float dt = (timeMs - slowRotMs_) / 1000.0f;
         ry = CHINA_RY + fmodf(dt * 4.0f, 360.0f);
     }
+
+    ry += dragOffset_;
 
     float ang = atan2f(data_.sunDir[0], data_.sunDir[2]);
 

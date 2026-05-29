@@ -41,7 +41,7 @@ struct EarthSceneConfig {
 };
 
 struct EarthSceneData {
-    float sunDir[3] = {0, 0, 1};
+    float sunDir[3] = {0.0f, 0.0f, 1.0f};
     float batteryPct = 0;
     bool isCharging = false;
     bool batteryIsLow = false;
@@ -49,7 +49,6 @@ struct EarthSceneData {
     float uvIndex = -1;
     float feelsLike = NAN;
     float precipProb = -1;
-    int notifCount = 0;
 };
 
 class EarthScene {
@@ -64,6 +63,7 @@ public:
                      const char* lunarText, const char* gzText,
                      bool isAmbient);
     void requestSpin();
+    void onDragDelta(float dx);
     void updateConfig(const EarthSceneConfig& cfg);
     void updateSunDirection(const float sunDir[3]);
     void updateData(const EarthSceneData& data);
@@ -111,6 +111,7 @@ private:
     bool isAnimating_ = false;
     int64_t wakeTime_ = 0;
     int64_t slowRotMs_ = 0;
+    float dragOffset_ = 0.0f;
     static constexpr int64_t ANIM_MS = 1500;
     static constexpr float CHINA_RY = 380.0f;
     static constexpr float GL_SCALE = 1.00f;
