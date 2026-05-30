@@ -149,11 +149,11 @@ struct Index {
       let fontObj = this.getUIContext().getFont()
       fontObj.registerFont({
         familyName: 'DSEG7Modern-Bold',
-        familySrc: '$rawfile/textures/fonts/DSEG7Modern-Bold.ttf'
+        familySrc: '$rawfile/fonts/DSEG7Modern-Bold.ttf'
       })
       fontObj.registerFont({
         familyName: 'DSEG7Classic-Bold',
-        familySrc: '$rawfile/textures/fonts/DSEG7Classic-Bold.ttf'
+        familySrc: '$rawfile/fonts/DSEG7Classic-Bold.ttf'
       })
       this.fontRegistered = true
     } catch (e) {

@@ -187,6 +187,8 @@ void GlOverlay::init(int width, int height, float innerRadius) {
 
     static const GLfloat quadUvData[] = {0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f};
 
+    if (vboDyn_ != 0) { glDeleteBuffers(1, &vboDyn_); vboDyn_ = 0; }
+    if (vboQuadUv_ != 0) { glDeleteBuffers(1, &vboQuadUv_); vboQuadUv_ = 0; }
     glGenBuffers(1, &vboDyn_);
     glGenBuffers(1, &vboQuadUv_);
     glBindBuffer(GL_ARRAY_BUFFER, vboQuadUv_);

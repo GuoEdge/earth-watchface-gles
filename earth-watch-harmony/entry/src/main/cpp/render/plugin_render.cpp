@@ -263,17 +263,15 @@ void PluginRender::OnSurfaceChanged(OH_NativeXComponent* component, void* window
 
 void PluginRender::OnSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
-    OH_LOG_Info(LOG_APP, "OnSurfaceDestroyed");
-
     surfaceReady_.store(false);
 
     eglCore_.MakeCurrent();
     eglCore_.Release();
 
+    OH_LOG_Info(LOG_APP, "OnSurfaceDestroyed - releasing EGL");
+
     std::string id = xComponentId_;
     RemoveInstance(id);
-
-    OH_LOG_Info(LOG_APP, "OnSurfaceDestroyed completed");
 }
 
 void PluginRender::DispatchTouchEvent(OH_NativeXComponent* component, void* window)
