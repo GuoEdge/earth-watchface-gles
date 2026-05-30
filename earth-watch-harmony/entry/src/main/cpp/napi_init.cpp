@@ -59,11 +59,18 @@ static napi_value InitScene(napi_env env, napi_callback_info info) {
 }
 
 static napi_value RenderFrame(napi_env env, napi_callback_info info) {
+    static int frameCount = 0;
     size_t argc = 12;
     napi_value args[12];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (!g_scene || argc < 12) return nullptr;
+    if (!g_scene || argc < 12) {
+        if (frameCount == 0) {
+            OH_LOG_Print(LOG_APP, LOG_WARN, 0x3200, "EarthWatch",
+                         "RenderFrame: scene not ready (scene=%{public}p, argc=%{public}zu)", g_scene, argc);
+        }
+        return nullptr;
+    }
 
     int32_t width = 0, height = 0;
     int64_t timeMs = 0;
@@ -97,6 +104,13 @@ static napi_value RenderFrame(napi_env env, napi_callback_info info) {
             }
         }
     }
+
+    if (frameCount % 300 == 0) {
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
+                     "RenderFrame #%{public}d: %{public}dx%{public}d ambient=%{public}s",
+                     frameCount, width, height, isAmbient ? "true" : "false");
+    }
+    frameCount++;
 
     earthwatch::PluginRender::MakeCurrentForRender();
 
@@ -234,6 +248,8 @@ static napi_value UpdateData(napi_env env, napi_callback_info info) {
 }
 
 static napi_value DestroyScene(napi_env env, napi_callback_info info) {
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
+                 "DestroyScene: releasing scene (scene=%{public}p)", g_scene);
     if (g_scene) {
         g_scene->release();
         delete g_scene;
@@ -248,17 +264,31 @@ static napi_value DestroyScene(napi_env env, napi_callback_info info) {
  * 解码后的像素数据始终是 RGBA 格式，loadTexture 应使用 isRgb=false。
  */
 static bool decodeAndLoad(napi_env env, napi_value arrayBuffer,
-                           void (EarthScene::*loader)(const uint8_t*, int, int)) {
+                           void (EarthScene::*loader)(const uint8_t*, int, int),
+                           const char* desc) {
     size_t byteLength = 0;
     void* data = nullptr;
     napi_get_arraybuffer_info(env, arrayBuffer, &data, &byteLength);
-    if (!data || byteLength == 0) return false;
+    if (!data || byteLength == 0) {
+        OH_LOG_Print(LOG_APP, LOG_WARN, 0x3200, "EarthWatch",
+                     "decodeAndLoad[%{public}s]: empty buffer", desc);
+        return false;
+    }
 
     int w = 0, h = 0, channels = 0;
     unsigned char* pixels = stbi_load_from_memory(
         static_cast<const stbi_uc*>(data), static_cast<int>(byteLength),
         &w, &h, &channels, 4);
-    if (!pixels) return false;
+    if (!pixels) {
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0x3200, "EarthWatch",
+                     "decodeAndLoad[%{public}s]: stb_load failed (%{public}s)",
+                     desc, stbi_failure_reason());
+        return false;
+    }
+
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
+                 "decodeAndLoad[%{public}s]: %{public}dx%{public}d RGBA (%{public}zu bytes in)",
+                 desc, w, h, byteLength);
 
     (g_scene->*loader)(pixels, w, h);
     stbi_image_free(pixels);
@@ -270,13 +300,21 @@ static napi_value LoadTextures(napi_env env, napi_callback_info info) {
     napi_value args[3];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (!g_scene || argc < 3) return nullptr;
+    if (!g_scene || argc < 3) {
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0x3200, "EarthWatch",
+                     "LoadTextures: scene not ready (scene=%{public}p, argc=%{public}zu)", g_scene, argc);
+        return nullptr;
+    }
 
     earthwatch::PluginRender::MakeCurrentForRender();
 
-    decodeAndLoad(env, args[0], &EarthScene::loadDayTexture);
-    decodeAndLoad(env, args[1], &EarthScene::loadNightTexture);
-    decodeAndLoad(env, args[2], &EarthScene::loadCloudTexture);
+    bool okDay = decodeAndLoad(env, args[0], &EarthScene::loadDayTexture, "day");
+    bool okNight = decodeAndLoad(env, args[1], &EarthScene::loadNightTexture, "night");
+    bool okCloud = decodeAndLoad(env, args[2], &EarthScene::loadCloudTexture, "cloud");
+
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0x3200, "EarthWatch",
+                 "LoadTextures complete: day=%{public}s night=%{public}s cloud=%{public}s",
+                 okDay ? "OK" : "FAIL", okNight ? "OK" : "FAIL", okCloud ? "OK" : "FAIL");
 
     return nullptr;
 }

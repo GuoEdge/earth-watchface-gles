@@ -85,30 +85,38 @@ struct Index {
   private isDragging: boolean = false
 
   aboutToAppear() {
+    console.info('[EarthWatch] aboutToAppear: starting services')
     this.weatherFetcher.startFetching()
     this.locationProvider.requestLocation(getContext(this)).then(() => {
       let loc = this.locationProvider.currentLocation
+      console.info(`[EarthWatch] location acquired: ${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}`)
       this.weatherFetcher.updateLocation(loc.latitude, loc.longitude)
+    }).catch((e: Error) => {
+      console.error(`[EarthWatch] location failed: ${e.message}, using default city`)
     })
   }
 
   aboutToDisappear() {
+    console.info('[EarthWatch] aboutToDisappear: stopping all services')
     this.stopRenderLoop()
     this.weatherFetcher.stopFetching()
   }
 
   onPageShow() {
+    console.info('[EarthWatch] onPageShow')
     if (!this.renderStarted) {
       this.startRenderLoop()
     }
   }
 
   onPageHide() {
+    console.info('[EarthWatch] onPageHide: pausing render')
     this.stopRenderLoop()
   }
 
   stopRenderLoop() {
     if (this.animTimer >= 0) {
+      console.info('[EarthWatch] stopping render loop')
       clearInterval(this.animTimer)
       this.animTimer = -1
     }
@@ -156,48 +164,67 @@ struct Index {
         familySrc: '$rawfile/fonts/DSEG7Classic-Bold.ttf'
       })
       this.fontRegistered = true
+      console.info('[EarthWatch] fonts registered: DSEG7Modern-Bold, DSEG7Classic-Bold')
     } catch (e) {
+      console.error(`[EarthWatch] font registration failed: ${JSON.stringify(e)}`)
     }
   }
 
   async loadTexturesAsync() {
     if (this.texturesLoaded) return
     try {
+      console.info('[EarthWatch] loading textures from rawfile...')
       let mgr = getContext(this).resourceManager
       let dayBuf = await mgr.getRawFileContent('textures/earth_day.jpg')
       let nightBuf = await mgr.getRawFileContent('textures/earth_night.png')
       let cloudBuf = await mgr.getRawFileContent('textures/earth_cloud.png')
+      console.info(`[EarthWatch] textures read: day=${dayBuf.byteLength}B, night=${nightBuf.byteLength}B, cloud=${cloudBuf.byteLength}B`)
       let dayArr = dayBuf.buffer.slice(dayBuf.byteOffset, dayBuf.byteOffset + dayBuf.byteLength)
       let nightArr = nightBuf.buffer.slice(nightBuf.byteOffset, nightBuf.byteOffset + nightBuf.byteLength)
       let cloudArr = cloudBuf.buffer.slice(cloudBuf.byteOffset, cloudBuf.byteOffset + cloudBuf.byteLength)
       nativerender.loadTextures(dayArr, nightArr, cloudArr)
       this.texturesLoaded = true
+      console.info('[EarthWatch] textures loaded and passed to native')
     } catch (e) {
+      console.error(`[EarthWatch] texture loading failed: ${JSON.stringify(e)}`)
     }
   }
 
   startRenderLoop() {
     if (this.renderStarted) return
     this.renderStarted = true
+    console.info('[EarthWatch] render loop starting')
 
     this.registerFonts()
 
+    let frameCount = 0
     this.animTimer = setInterval(() => {
       if (!this.sceneInited) {
         let size = nativerender.getSurfaceSize()
         if (size.width > 0 && size.height > 0) {
           this.surfaceWidth = size.width
           this.surfaceHeight = size.height
+          console.info(`[EarthWatch] surface ready: ${size.width}x${size.height}, initializing scene`)
           nativerender.initScene(this.surfaceWidth, this.surfaceHeight)
           this.pushConfig()
           this.pushSceneData()
           this.loadTexturesAsync()
           this.sceneInited = true
+          console.info('[EarthWatch] scene initialized and textures loading')
         }
         return
       }
 
+      if (frameCount === 0) {
+        console.info('[EarthWatch] first render frame dispatched')
+      }
+
       this.isAmbient = this.screenState.isAmbient
+
+      if (frameCount % 90 === 0) {
+        console.info(`[EarthWatch] frame #${frameCount} | ambient=${this.isAmbient} | time=${this.currentTime} | batt=${this.batteryProvider.batteryPct}%`)
+      }
+      frameCount++
 
       const now = new Date()
       const timeMs = now.getTime()
@@ -240,9 +267,11 @@ struct Index {
         .width('100%')
         .height('100%')
         .onLoad((context?: object) => {
+          console.info('[EarthWatch] XComponent.onLoad triggered')
           this.startRenderLoop()
         })
         .onDestroy(() => {
+          console.info('[EarthWatch] XComponent.onDestroy triggered')
           this.stopRenderLoop()
           this.sceneInited = false
           nativerender.destroyScene()
