@@ -13,6 +13,11 @@ class EarthCanvasComplication : CanvasComplication {
 
     private var data: ComplicationData = EmptyComplicationData()
 
+    // 主题色，由 EarthRenderer 更新
+    var textColor: Int = Color.WHITE
+    var titleColor: Int = 0xFFC8D8FF.toInt()
+    var accentColor: Int = 0xFF42A5F5.toInt()
+
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         color = Color.WHITE
@@ -91,12 +96,14 @@ class EarthCanvasComplication : CanvasComplication {
         val cx = bounds.exactCenterX()
         if (title != null) {
             titlePaint.textSize = bounds.height() * 0.30f
-            titlePaint.color = 0xFFC8D8FF.toInt()
+            titlePaint.color = titleColor
             c.drawText(title.toString(), cx, bounds.top + titlePaint.textSize + 2f, titlePaint)
             textPaint.textSize = bounds.height() * 0.40f
+            textPaint.color = textColor
             c.drawText(text.toString(), cx, bounds.bottom - 4f, textPaint)
         } else {
             textPaint.textSize = bounds.height() * 0.45f
+            textPaint.color = textColor
             c.drawText(text.toString(), cx, bounds.exactCenterY() + textPaint.textSize * 0.35f, textPaint)
         }
     }
@@ -111,12 +118,13 @@ class EarthCanvasComplication : CanvasComplication {
 
         if (title != null) {
             titlePaint.textSize = bounds.height() * 0.26f
-            titlePaint.color = 0xFFC8D8FF.toInt()
+            titlePaint.color = titleColor
             c.drawText(title.toString(), cx, bounds.top + titlePaint.textSize + 2f, titlePaint)
         }
 
         if (text != null) {
             textPaint.textSize = bounds.height() * 0.38f
+            textPaint.color = textColor
             c.drawText(text.toString(), cx, bounds.bottom - bounds.height() * 0.38f, textPaint)
         }
 
@@ -126,7 +134,7 @@ class EarthCanvasComplication : CanvasComplication {
         arcPaint.strokeWidth = 3f
         arcPaint.color = 0x33FFFFFF.toInt()
         c.drawLine(barL, barY, barR, barY, arcPaint)
-        arcPaint.color = 0xFF42A5F5.toInt()
+        arcPaint.color = accentColor
         c.drawLine(barL, barY, barL + (barR - barL) * pct, barY, arcPaint)
     }
 }

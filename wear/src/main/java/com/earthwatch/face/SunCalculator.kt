@@ -4,7 +4,9 @@ import java.time.*
 import kotlin.math.*
 
 class SunCalculator {
-    fun sunDirection(dateTime: LocalDateTime): FloatArray {
+    private val out = FloatArray(3)
+
+    fun sunDirection(dateTime: LocalDateTime, dest: FloatArray = out): FloatArray {
         val bh = dateTime.hour.toFloat() + dateTime.minute / 60f + dateTime.second / 3600f
         val ha = -(bh / 12f) * PI.toFloat()
         val doy = dateTime.dayOfYear.toFloat()
@@ -13,6 +15,9 @@ class SunCalculator {
         val sy = sin(dec)
         val sz = cos(dec) * sin(ha)
         val len = sqrt(sx * sx + sy * sy + sz * sz)
-        return floatArrayOf(sx / len, sy / len, sz / len)
+        dest[0] = sx / len
+        dest[1] = sy / len
+        dest[2] = sz / len
+        return dest
     }
 }

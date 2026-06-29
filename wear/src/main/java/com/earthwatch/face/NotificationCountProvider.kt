@@ -46,6 +46,6 @@ class NotificationCountProvider(private val context: Context) {
     }
 
     companion object {
-        private const val THROTTLE_MS = 5000L
+        private const val THROTTLE_MS = 15000L
     }
 }

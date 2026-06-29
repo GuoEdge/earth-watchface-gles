@@ -28,6 +28,10 @@ class WeatherFetcher(private val context: Context) {
     private val LOC_REFRESH_MS = 10 * 60 * 1000L
     private val fetchLock = Any()
 
+    fun ensureFresh() {
+        if (System.currentTimeMillis() - lastFetch > REFRESH_MS) fetch()
+    }
+
     val display: String get() {
         if (System.currentTimeMillis() - lastFetch > REFRESH_MS) fetch()
         return "$cachedIcon$cachedTemp"
@@ -77,19 +81,32 @@ class WeatherFetcher(private val context: Context) {
         if (now - lastLoc <= LOC_REFRESH_MS && !cachedLat.isNaN()) return cachedLat to cachedLon
         lastLoc = now
         try {
-            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
-            // Try passive first (uses any recent location from other apps), then network, then GPS
-            val loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            if (loc != null) {
-                cachedLat = loc.latitude; cachedLon = loc.longitude
-                saveLocation(loc.latitude, loc.longitude)
-                Log.i("Weather", "Device location: $cachedLat, $cachedLon")
-                return cachedLat to cachedLon
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            if (lm != null) {
+                val loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+                    ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                if (loc != null) {
+                    cachedLat = loc.latitude; cachedLon = loc.longitude
+                    saveLocation(loc.latitude, loc.longitude)
+                    Log.i("Weather", "Device location: $cachedLat, $cachedLon")
+                    return cachedLat to cachedLon
+                }
             }
         } catch (e: SecurityException) {
             Log.w("Weather", "Location permission denied: ${e.message}")
+        }
+        val prefs = context.getSharedPreferences("earth_watch_config", Context.MODE_PRIVATE)
+        val latStr = prefs.getString("weather_lat", null)
+        val lonStr = prefs.getString("weather_lon", null)
+        if (latStr != null && lonStr != null) {
+            val lat = latStr.toDoubleOrNull()
+            val lon = lonStr.toDoubleOrNull()
+            if (lat != null && lon != null) {
+                cachedLat = lat; cachedLon = lon
+                Log.i("Weather", "Using saved location: $lat, $lon")
+                return cachedLat to cachedLon
+            }
         }
         return null
     }

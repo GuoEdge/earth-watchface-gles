@@ -9,3 +9,10 @@ local.properties
 .DS_Store
 release.jks
 keystore.properties
+
+# 构建日志和临时验证文件
+build-*.txt
+*-output*.txt
+*.png
+ui.xml
+stash-*.patch

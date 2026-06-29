@@ -29,6 +29,16 @@ class GlPrimitives {
     private val quadPosBuf = allocFloat(8)
     private val quadUvBuf = allocFloat(8)
     private val sdfQuadBuf = allocFloat(8)
+    private val circleScratch = FloatArray(132)
+    private val lineScratch = FloatArray(12)
+    private val sdfScratch = FloatArray(8)
+    private val quadScratch = FloatArray(8)
+    private val ringScratch = FloatArray((128 + 1) * 4)
+    private val arcScratch = FloatArray((128 + 1) * 4)
+
+    private companion object {
+        private const val MAX_ARC_SEGMENTS = 128
+    }
 
     private fun allocFloat(count: Int): FloatBuffer {
         val bb = ByteBuffer.allocateDirect(count * 4)
@@ -92,15 +102,18 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
 
     fun drawLine(mvp: FloatArray, x1: Float, y1: Float, x2: Float, y2: Float,
                  width: Float, color: FloatArray) {
+        if (prog == 0) return
         val dx = x2 - x1; val dy = y2 - y1
         val len = sqrt(dx * dx + dy * dy)
         if (len < 0.001f) return
         val nx = -dy / len * width / 2f; val ny = dx / len * width / 2f
-        val d = floatArrayOf(
-            x1 + nx, y1 + ny, x1 - nx, y1 - ny, x2 + nx, y2 + ny,
-            x2 + nx, y2 + ny, x1 - nx, y1 - ny, x2 - nx, y2 - ny
-        )
-        lineBuf.putArray(d)
+        lineScratch[0] = x1 + nx; lineScratch[1] = y1 + ny
+        lineScratch[2] = x1 - nx; lineScratch[3] = y1 - ny
+        lineScratch[4] = x2 + nx; lineScratch[5] = y2 + ny
+        lineScratch[6] = x2 + nx; lineScratch[7] = y2 + ny
+        lineScratch[8] = x1 - nx; lineScratch[9] = y1 - ny
+        lineScratch[10] = x2 - nx; lineScratch[11] = y2 - ny
+        lineBuf.putArray(lineScratch)
 
         GLES20.glUseProgram(prog)
         GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
@@ -112,15 +125,15 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
     }
 
     fun drawCircle(mvp: FloatArray, cx: Float, cy: Float, radius: Float, color: FloatArray) {
+        if (prog == 0) return
         val segments = 64
-        val d = FloatArray((segments + 2) * 2)
-        d[0] = cx; d[1] = cy
+        circleScratch[0] = cx; circleScratch[1] = cy
         for (i in 0..segments) {
             val a = 2f * kotlin.math.PI.toFloat() * i / segments
-            d[(i + 1) * 2] = cx + radius * cos(a)
-            d[(i + 1) * 2 + 1] = cy + radius * sin(a)
+            circleScratch[(i + 1) * 2] = cx + radius * cos(a)
+            circleScratch[(i + 1) * 2 + 1] = cy + radius * sin(a)
         }
-        fanBuf.putArray(d)
+        fanBuf.putArray(circleScratch, (segments + 2) * 2)
 
         GLES20.glUseProgram(prog)
         GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
@@ -132,10 +145,11 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
     }
 
     fun drawRing(mvp: FloatArray, cx: Float, cy: Float, radius: Float, strokeWidth: Float, color: FloatArray) {
+        if (prog == 0) return
         val segments = 128
         val halfW = strokeWidth / 2f
         val innerR = radius - halfW; val outerR = radius + halfW
-        val d = FloatArray((segments + 1) * 4)
+        val d = ringScratch
         var idx = 0
         for (i in 0..segments) {
             val a = 2f * kotlin.math.PI.toFloat() * i / segments
@@ -156,10 +170,12 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
 
     fun drawArc(mvp: FloatArray, cx: Float, cy: Float, radius: Float,
                 startAngle: Float, sweepAngle: Float, width: Float, color: FloatArray) {
-        val segments = kotlin.math.max(8, (kotlin.math.abs(sweepAngle) / (2f * kotlin.math.PI.toFloat()) * 128).toInt())
+        if (prog == 0) return
+        val segments = kotlin.math.min(MAX_ARC_SEGMENTS,
+            kotlin.math.max(8, (kotlin.math.abs(sweepAngle) / (2f * kotlin.math.PI.toFloat()) * 128).toInt()))
         val halfW = width / 2f
         val innerR = radius - halfW; val outerR = radius + halfW
-        val d = FloatArray((segments + 1) * 4)
+        val d = arcScratch
         var idx = 0
         for (i in 0..segments) {
             val a = startAngle + sweepAngle * i / segments
@@ -194,8 +210,11 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
         val pad = width * 0.5f + 2f
         val minX = minOf(x1, x2) - pad; val minY = minOf(y1, y2) - pad
         val maxX = maxOf(x1, x2) + pad; val maxY = maxOf(y1, y2) + pad
-        val d = floatArrayOf(minX, maxY, maxX, maxY, minX, minY, maxX, minY)
-        sdfQuadBuf.putArray(d)
+        sdfScratch[0] = minX; sdfScratch[1] = maxY
+        sdfScratch[2] = maxX; sdfScratch[3] = maxY
+        sdfScratch[4] = minX; sdfScratch[5] = minY
+        sdfScratch[6] = maxX; sdfScratch[7] = minY
+        sdfQuadBuf.putArray(sdfScratch)
 
         GLES20.glUseProgram(progSdf)
         GLES20.glUniformMatrix4fv(uMvpSdf, 1, false, mvp, 0)
@@ -214,8 +233,11 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
         if (progSdf == 0) { drawArcRounded(mvp, cx, cy, radius, startAngle, sweepAngle, width, color); return }
         val pad = width * 0.5f + 2f
         val outerR = radius + pad
-        val d = floatArrayOf(cx - outerR, cy + outerR, cx + outerR, cy + outerR, cx - outerR, cy - outerR, cx + outerR, cy - outerR)
-        sdfQuadBuf.putArray(d)
+        sdfScratch[0] = cx - outerR; sdfScratch[1] = cy + outerR
+        sdfScratch[2] = cx + outerR; sdfScratch[3] = cy + outerR
+        sdfScratch[4] = cx - outerR; sdfScratch[5] = cy - outerR
+        sdfScratch[6] = cx + outerR; sdfScratch[7] = cy - outerR
+        sdfQuadBuf.putArray(sdfScratch)
 
         GLES20.glUseProgram(progSdf)
         GLES20.glUniformMatrix4fv(uMvpSdf, 1, false, mvp, 0)
@@ -233,10 +255,42 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
         drawTexturedQuadInternal(mvp, texId, x, y, w, h, alpha, quadUvBuf)
     }
 
-    private fun drawTexturedQuadInternal(mvp: FloatArray, texId: Int, x: Float, y: Float, w: Float, h: Float, alpha: Float, uvBuf: FloatBuffer) {
-        val d = floatArrayOf(x, y + h, x + w, y + h, x, y, x + w, y)
-        quadPosBuf.putArray(d)
+    /** 纹理 quad，绕其中心旋转 angleRad 弧度（正=逆时针） */
+    fun drawTexturedQuadRotated(mvp: FloatArray, texId: Int, cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, alpha: Float) {
+        val hw = w / 2f; val hh = h / 2f
+        val cosA = cos(angleRad); val sinA = sin(angleRad)
+        val x0=-hw; val y0= hh; val x1= hw; val y1= hh
+        val x2=-hw; val y2=-hh; val x3= hw; val y3=-hh
+        quadScratch[0] = cx+x0*cosA-y0*sinA; quadScratch[1] = cy+x0*sinA+y0*cosA
+        quadScratch[2] = cx+x1*cosA-y1*sinA; quadScratch[3] = cy+x1*sinA+y1*cosA
+        quadScratch[4] = cx+x2*cosA-y2*sinA; quadScratch[5] = cy+x2*sinA+y2*cosA
+        quadScratch[6] = cx+x3*cosA-y3*sinA; quadScratch[7] = cy+x3*sinA+y3*cosA
+        quadPosBuf.putArray(quadScratch)
 
+        if (progTex == 0) return
+        GLES20.glUseProgram(progTex)
+        GLES20.glUniformMatrix4fv(uMvpTex, 1, false, mvp, 0)
+        GLES20.glUniform1f(uAlphaTex, alpha)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texId)
+        GLES20.glUniform1i(uTexTex, 0)
+        GLES20.glEnableVertexAttribArray(aPosTex)
+        GLES20.glVertexAttribPointer(aPosTex, 2, GLES20.GL_FLOAT, false, 0, quadPosBuf)
+        GLES20.glEnableVertexAttribArray(aUvTex)
+        GLES20.glVertexAttribPointer(aUvTex, 2, GLES20.GL_FLOAT, false, 0, quadUvBuf)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPosTex)
+        GLES20.glDisableVertexAttribArray(aUvTex)
+    }
+
+    private fun drawTexturedQuadInternal(mvp: FloatArray, texId: Int, x: Float, y: Float, w: Float, h: Float, alpha: Float, uvBuf: FloatBuffer) {
+        quadScratch[0] = x; quadScratch[1] = y + h
+        quadScratch[2] = x + w; quadScratch[3] = y + h
+        quadScratch[4] = x; quadScratch[5] = y
+        quadScratch[6] = x + w; quadScratch[7] = y
+        quadPosBuf.putArray(quadScratch)
+
+        if (progTex == 0) return
         GLES20.glUseProgram(progTex)
         GLES20.glUniformMatrix4fv(uMvpTex, 1, false, mvp, 0)
         GLES20.glUniform1f(uAlphaTex, alpha)
@@ -255,8 +309,13 @@ void main(){float d;if(uP3.w<0.5){d=sdRoundLine(vPos,uP1.xy,uP1.zw,uP2.x);}else{
 
     private fun mkProg(v: String, f: String): Int {
         val vs = compile(GLES20.GL_VERTEX_SHADER, v); val fs = compile(GLES20.GL_FRAGMENT_SHADER, f)
-        if (vs == 0 || fs == 0) return 0
+        if (vs == 0 || fs == 0) {
+            if (vs != 0) GLES20.glDeleteShader(vs)
+            if (fs != 0) GLES20.glDeleteShader(fs)
+            return 0
+        }
         val p = GLES20.glCreateProgram(); GLES20.glAttachShader(p, vs); GLES20.glAttachShader(p, fs); GLES20.glLinkProgram(p)
+        GLES20.glDeleteShader(vs); GLES20.glDeleteShader(fs)
         val st = IntArray(1); GLES20.glGetProgramiv(p, GLES20.GL_LINK_STATUS, st, 0)
         if (st[0] == 0) { GLES20.glDeleteProgram(p); return 0 }
         return p

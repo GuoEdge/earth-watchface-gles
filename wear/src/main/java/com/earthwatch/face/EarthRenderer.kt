@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.*
 import android.os.BatteryManager
+import android.os.PowerManager
 import android.opengl.GLES20
 import android.opengl.GLUtils
 import android.view.SurfaceHolder
@@ -29,24 +30,30 @@ private data class Palette(
     val gz: Int,
     val rim: Int,
     val arcs: List<Int>,
+    val atmo: Int,
 )
 
 private val PALETTES = listOf(
     Palette(0xFFF5F9FF.toInt(), 0xFFF0F4FF.toInt(), 0xFFFF6B6B.toInt(), 0xFFCAD8F0.toInt(),
         0xFFC0D4EE.toInt(), 0xFFA0B8D8.toInt(), 0xFF4A90D9.toInt(),
-        listOf(0xFFFF9800.toInt(), 0xFF00BFA5.toInt(), 0xFFE85D75.toInt(), 0xFF5B8DEF.toInt())),
+        listOf(0xFFFF9800.toInt(), 0xFF00BFA5.toInt(), 0xFFE85D75.toInt(), 0xFF5B8DEF.toInt()),
+        0xFF3296F0.toInt()),
     Palette(0xFFE8F4FD.toInt(), 0xFFD6ECFA.toInt(), 0xFF64B5F6.toInt(), 0xFFB3D9F2.toInt(),
         0xFFA8D4F0.toInt(), 0xFF80B9E0.toInt(), 0xFF0277BD.toInt(),
-        listOf(0xFF4FC3F7.toInt(), 0xFF29B6F6.toInt(), 0xFF03A9F4.toInt(), 0xFF039BE5.toInt())),
+        listOf(0xFF4FC3F7.toInt(), 0xFF29B6F6.toInt(), 0xFF03A9F4.toInt(), 0xFF039BE5.toInt()),
+        0xFF1E88E5.toInt()),
     Palette(0xFFFCFAF7.toInt(), 0xFFF5F0EB.toInt(), 0xFFBCAAA4.toInt(), 0xFFF0EBE3.toInt(),
         0xFFEDE5DB.toInt(), 0xFFDDD3C7.toInt(), 0xFFA09080.toInt(),
-        listOf(0xFFF5F0EB.toInt(), 0xFFEDE4D9.toInt(), 0xFFE0D4C5.toInt(), 0xFFD4C4B0.toInt())),
+        listOf(0xFFF5F0EB.toInt(), 0xFFEDE4D9.toInt(), 0xFFE0D4C5.toInt(), 0xFFD4C4B0.toInt()),
+        0xFFB0A090.toInt()),
     Palette(0xFFFFECE8.toInt(), 0xFFFFD4C0.toInt(), 0xFFFF5252.toInt(), 0xFFFFAB91.toInt(),
         0xFFFFAB91.toInt(), 0xFFFF8A65.toInt(), 0xFFD50000.toInt(),
-        listOf(0xFFFF7043.toInt(), 0xFFE53935.toInt(), 0xFFD50000.toInt(), 0xFFBF360C.toInt())),
+        listOf(0xFFFF7043.toInt(), 0xFFE53935.toInt(), 0xFFD50000.toInt(), 0xFFBF360C.toInt()),
+        0xFFFF5722.toInt()),
     Palette(0xFFE8F0E0.toInt(), 0xFFD4E0C8.toInt(), 0xFF81C784.toInt(), 0xFFB8D0A8.toInt(),
         0xFFA8CCA0.toInt(), 0xFF8DB580.toInt(), 0xFF2E7D32.toInt(),
-        listOf(0xFF66BB6A.toInt(), 0xFF43A047.toInt(), 0xFF388E3C.toInt(), 0xFF2E7D32.toInt())),
+        listOf(0xFF66BB6A.toInt(), 0xFF43A047.toInt(), 0xFF388E3C.toInt(), 0xFF2E7D32.toInt()),
+        0xFF43A047.toInt()),
 )
 
 private data class ArcSlot(val slotId: Int, val startAngle: Float, val endAngle: Float)
@@ -81,29 +88,26 @@ class EarthRenderer(
     private val textCache = TextTextureCache()
     private val notifProvider = NotificationCountProvider(context)
     private val wfState = watchState
+    private val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
 
     private var dayTex: Bitmap? = null
-    private var dayTexLoaded = false
     private var nightTex: Bitmap? = null
-    private var nightTexLoaded = false
     private fun ensureTextures() {
-        if (!dayTexLoaded) {
+        if (dayTex == null) {
             try { dayTex = BitmapFactory.decodeStream(context.assets.open("textures/earth_day.jpg")) }
             catch (e: Exception) { android.util.Log.w("EarthRenderer", "Failed to load day texture", e) }
-            dayTexLoaded = true
         }
-        if (!nightTexLoaded) {
+        if (nightTex == null) {
             try { nightTex = BitmapFactory.decodeStream(context.assets.open("textures/earth_night.png")) }
             catch (e: Exception) { android.util.Log.w("EarthRenderer", "Failed to load night texture", e) }
-            nightTexLoaded = true
         }
     }
 
     private var wasInteractive = false
-    private var isAnimating = false
-    private var wakeTime = 0L
+    @Volatile private var isAnimating = false
+    @Volatile private var wakeTime = 0L
     private val ANIM_MS = 1500L
-    private var slowRotMs = 0L
+    @Volatile private var slowRotMs = 0L
 
     @Volatile private var bmpSize = 0
     private val GL_SCALE = 1.00f
@@ -132,7 +136,9 @@ class EarthRenderer(
             else
                 context.registerReceiver(null, filter)
             isCharging = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)?.let { it != 0 } ?: false
-            batteryIsLow = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, 100)?.let { it <= 15 } ?: false
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+            batteryIsLow = if (level >= 0 && scale > 0) level * 100 / scale <= 15 else false
         } catch (_: Exception) { }
     }
 
@@ -157,6 +163,8 @@ class EarthRenderer(
         if (!configPrefs.contains("font_style")) edit.putString("font_style", "0")
         if (!configPrefs.contains("show_clouds")) edit.putString("show_clouds", "0")
         if (!configPrefs.contains("animation_mode")) edit.putString("animation_mode", "0")
+        if (!configPrefs.contains("shichen_font")) edit.putString("shichen_font", "0")
+        if (!configPrefs.contains("power_mode")) edit.putString("power_mode", "0")
         edit.putInt("config_version", 7)
         edit.apply()
     }
@@ -195,20 +203,25 @@ class EarthRenderer(
     private var showLunar = true
     private var showSensors = true
     private var showClouds = true
-    private var animMode = 0
+    @Volatile private var animMode = 0
+    private var shichenFont = 0  // 0=系统默认 1=宋体 2=关闭
+    @Volatile private var powerMode = 0  // 0=平衡30fps 1=动态 2=省电1fps跳秒
+    @Volatile private var isSystemPowerSave = false
+    private var lastRenderMs = 0L
+    private var lastPowerSaveCheckMs = 0L
+
+    /** 当系统省电模式开启时，自动降级到最省电模式（2），忽略用户配置。 */
+    private val effectivePowerMode: Int get() = if (isSystemPowerSave) 2 else powerMode
+
+    /** 省电降级：系统省电时跳过云层、大气、晨昏线等重 GPU 特效。 */
+    private val effectiveShowClouds: Boolean get() = showClouds && !isSystemPowerSave
     private val arcDataSource = IntArray(4) { 0 }
+    private val arcDisplayPct = FloatArray(4) { 0f }  // 动画当前值
+    private val arcTargetPct = FloatArray(4) { 0f }    // 目标值
+    private var lastArcAnimMs = 0L
     private var lastStyleReadMs = 0L
 
-    private fun readStyle() {
-        val now = System.currentTimeMillis()
-        if (now - lastStyleReadMs < 500L) return
-        lastStyleReadMs = now
-        val style = curStyleRepo.userStyle.value
-        val fp = computeFingerprint(style)
-        if (fp != lastStyleFingerprint) {
-            lastStyleFingerprint = fp
-            syncStyleToPrefs(style)
-        }
+    private fun loadPrefs() {
         accentIdx = prefGet("accent_color")
         showLunar = prefGet("show_lunar") == 0
         showSensors = prefGet("show_sensors") == 0
@@ -218,10 +231,25 @@ class EarthRenderer(
         arcDataSource[3] = prefGet("arc_br")
         showClouds = prefGet("show_clouds") == 0
         animMode = prefGet("animation_mode")
+        shichenFont = prefGet("shichen_font")
+        powerMode = prefGet("power_mode")
         val fontStyle = prefGet("font_style")
         timeP.typeface = when (fontStyle) { 1 -> fontClassic; 2 -> fontDefault; 3 -> fontLight; else -> fontModern }
-        val idx = accentIdx.coerceIn(0, PALETTES.lastIndex)
-        palette = PALETTES[idx]
+        palette = PALETTES[accentIdx.coerceIn(0, PALETTES.lastIndex)]
+    }
+
+    private fun readStyle() {
+        loadPrefs()
+        val now = System.currentTimeMillis()
+        if (now - lastStyleReadMs < 500L) return
+        lastStyleReadMs = now
+        val style = curStyleRepo.userStyle.value
+        val fp = computeFingerprint(style)
+        if (fp != lastStyleFingerprint) {
+            lastStyleFingerprint = fp
+            syncStyleToPrefs(style)
+            loadPrefs()
+        }
     }
 
     private val fingerprintBuilder = StringBuilder(32)
@@ -241,8 +269,8 @@ class EarthRenderer(
     private var palette = PALETTES[0]
 
     private val timeP = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; letterSpacing = 0.04f }
-    private val fontModern = Typeface.createFromAsset(context.assets, "fonts/DSEG7Modern-Bold.ttf")
-    private val fontClassic = Typeface.createFromAsset(context.assets, "fonts/DSEG7Classic-Bold.ttf")
+    private val fontModern by lazy { Typeface.createFromAsset(context.assets, "fonts/DSEG7Modern-Bold.ttf") }
+    private val fontClassic by lazy { Typeface.createFromAsset(context.assets, "fonts/DSEG7Classic-Bold.ttf") }
     private val fontDefault = Typeface.create("sans-serif", Typeface.BOLD)
     private val fontLight = Typeface.create("sans-serif-light", Typeface.NORMAL)
     private val gregP = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; typeface = Typeface.create("sans-serif", Typeface.BOLD) }
@@ -256,15 +284,40 @@ class EarthRenderer(
     private var compBmps = arrayOfNulls<Bitmap>(4)
     private var compBmpSizes = Array(4) { intArrayOf(0, 0) }
     private var compDataFp = Array(4) { "" }
+    private val compLastData = arrayOfNulls<ComplicationData>(4)
 
     private var cloudLoaded = false
     private var cloudRenderLogged = false
 
     private var atmoLoaded = false
     private var atmoIr = 0f
+    private var atmoPaletteIdx = -1
 
     private var nightOverlayTex = 0
     private var lastNightAng = Float.NaN
+    private var lastNightIr = Float.NaN
+    private var lastNightOverlayBuildMs = 0L
+    private val NIGHT_OVERLAY_REFRESH_MS = 30 * 60 * 1000L
+
+    private val sunDirBuf = FloatArray(3)
+    private val shadowHandColor = floatArrayOf(0f, 0f, 0f, 0.38f)
+    private val centerDotColor = floatArrayOf(1f, 0.27f, 0f, 1f)
+    private var nightDimFactor = 1f  // 1=白天, 0.6=深夜, 平滑过渡
+
+    private var cachedMinuteKey = -1L
+    private var cachedDateText = ""
+    private var cachedLunarText = ""
+    private var cachedGzText = ""
+    private var cachedSolarTerm = ""
+    private var cachedTimeKey = -1L
+    private var cachedTimeText = ""
+    private var cachedTimeHh = ""
+    private var cachedTimeMm = ""
+    private val sensorTextsArr = Array(4) { "" }
+    private val compRenderParams = RenderParameters(
+        drawMode = DrawMode.INTERACTIVE,
+        watchFaceLayers = setOf(WatchFaceLayer.COMPLICATIONS)
+    )
 
     override suspend fun createSharedAssets(): EarthAssets = EarthAssets()
 
@@ -286,32 +339,51 @@ class EarthRenderer(
             bmpSize = 0
             textCache.release()
             cloudLoaded = false; atmoLoaded = false; atmoIr = 0f
-            lastNightAng = Float.NaN; nightOverlayTex = 0
-            for (i in compTexIds.indices) { compTexIds[i] = 0 }; compDataFp = Array(4) { "" }
+            lastNightAng = Float.NaN; lastNightIr = Float.NaN; nightOverlayTex = 0
+            for (i in compTexIds.indices) { compTexIds[i] = 0 }
+            compDataFp = Array(4) { "" }
+            for (i in compLastData.indices) { compLastData[i] = null }
         }
 
         if (!isInteractive) {
+            loadPrefs()
             renderAmbient(zdt, w, h, cx, cy, ir, f)
             return
         }
 
         readStyle()
+
+        if (System.currentTimeMillis() - lastPowerSaveCheckMs > 2000L) {
+            val newPowerSave = powerManager?.isPowerSaveMode == true
+            if (newPowerSave != isSystemPowerSave) {
+                android.util.Log.i("EarthRenderer", "PowerSave changed: $isSystemPowerSave -> $newPowerSave")
+                isSystemPowerSave = newPowerSave
+                // 状态变化时立即恢复：清空节流计时器，让下一帧立即渲染
+                lastRenderMs = 0L
+                lastArcAnimMs = 0L
+            }
+            lastPowerSaveCheckMs = System.currentTimeMillis()
+        }
+
+        val nowMs = System.currentTimeMillis()
+        val effMode = effectivePowerMode
+        val targetInterval = when (effMode) {
+            0 -> 33L
+            1 -> if (isAnimating) 20L else 33L
+            2 -> if (isAnimating) 33L else 1000L
+            else -> 33L
+        }
+        if (lastRenderMs != 0L && nowMs - lastRenderMs < targetInterval) return
+        lastRenderMs = nowMs
+        weatherFetcher.ensureFresh()
+        notifProvider.refresh()
         if (System.currentTimeMillis() - lastBatteryMs > BATTERY_READ_MS) {
             readBattery(); lastBatteryMs = System.currentTimeMillis()
         }
 
         val sz = (min(w, h) * GL_SCALE).toInt().coerceAtLeast(64)
-
         if (sz > 0 && sz != bmpSize) {
-            ensureTextures(); bmpSize = sz
-            android.util.Log.i("EarthRenderer", "init GL sz=$sz")
-            earthGles.init(sz, dayTex, nightTex)
-            glPrimitives.init()
-            glOverlay.init()
-            cloudLoaded = false; initCloudTexture()
-            atmoIr = 0f; atmoLoaded = false
-            lastNightAng = Float.NaN
-            android.util.Log.i("EarthRenderer", "GL init done progEarth=${earthGles.progEarthDebug} prog2d=${glPrimitives.progDebug}")
+            initGlResources(sz)
         }
 
         if (!wasInteractive) {
@@ -341,20 +413,28 @@ class EarthRenderer(
             ry = CHINA_RY
         }
 
-        val sunDir = sunCalc.sunDirection(
-            zdt.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
+        sunCalc.sunDirection(
+            zdt.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime(), sunDirBuf
         )
-        val ang = atan2(sunDir[0].toDouble(), sunDir[2].toDouble()).toFloat()
+        val ang = atan2(sunDirBuf[0].toDouble(), sunDirBuf[2].toDouble()).toFloat()
+        // 夜晚文字降亮：sunDir.y > 0 = 北半球白天, < 0 = 夜晚
+        val sunY = sunDirBuf[1]
+        val targetDim = if (sunY > 0.1f) 1f else if (sunY < -0.1f) 0.65f else 0.65f + 0.35f * ((sunY + 0.1f) / 0.2f)
+        nightDimFactor = targetDim
 
-        val timeText = String.format(Locale.US, "%02d:%02d", zdt.hour, zdt.minute)
-        val dateText = "${zdt.monthValue}月${zdt.dayOfMonth}日 ${dow(zdt.dayOfWeek)}"
-        val lunarText = if (showLunar) lunarCalc.toLunar(zdt.toLocalDate()) else ""
-        val gzText = if (showLunar) lunarCalc.toGanzhi(zdt.toLocalDate()) else ""
+        val minuteKey = zdt.toLocalDate().toEpochDay() * 1440L + zdt.hour * 60L + zdt.minute
+        if (minuteKey != cachedTimeKey) {
+            cachedTimeKey = minuteKey
+            cachedTimeHh = String.format(Locale.US, "%02d", zdt.hour)
+            cachedTimeMm = String.format(Locale.US, "%02d", zdt.minute)
+            cachedTimeText = "$cachedTimeHh:$cachedTimeMm"
+        }
+        val (dateText, lunarText, gzText) = dateStrings(zdt)
         updateActiveSlotIds()
 
-        val sensorTexts = (0..3).map { i ->
+        for (i in 0..3) {
             val ds = arcDataSource[i]
-            if (ds == 99 || ARC_SLOTS[i].slotId in _activeSlotIds) "" else dataForSource(ds).second
+            sensorTextsArr[i] = if (ds == 99 || ARC_SLOTS[i].slotId in _activeSlotIds) "" else dataForSource(ds).second
         }
 
         GLES20.glViewport(0, 0, w, h)
@@ -364,7 +444,7 @@ class EarthRenderer(
         // ── 3D地球 ──
         val earthVpX = (w - sz) / 2
         val earthVpY = ((h - sz) / 2 - off.toInt())
-        earthGles.render(sz, ry, sunDir, earthVpX, earthVpY)
+        earthGles.render(sz, ry, sunDirBuf, earthVpX, earthVpY)
 
         resetGlState()
 
@@ -377,9 +457,9 @@ class EarthRenderer(
 
         val mvp = orthoMvp(w, h)
 
-        // 云层 + 晨昏线 + 大气
+        // 云层 + 晨昏线 + 大气（省电降级：系统省电时跳过重 GPU 特效）
         val rotYRad = Math.toRadians(ry.toDouble()).toFloat()
-        if (showClouds && glOverlay.cloudInited) {
+        if (effectiveShowClouds && glOverlay.cloudInited) {
             val cw = glOverlay.cloudW
             val cloudDrift = if (cw <= 0) 0f else {
                 val periodMs = 1000L * cw
@@ -390,25 +470,27 @@ class EarthRenderer(
             glOverlay.drawClouds(mvp, cx, cy + off, ir * 0.95f, cloudDrift, 150 / 255f, rotYRad)
         } else if (!cloudRenderLogged) {
             cloudRenderLogged = true
-            android.util.Log.i("EarthRenderer", "Clouds NOT rendering: showClouds=$showClouds cloudInited=${glOverlay.cloudInited}")
+            android.util.Log.i("EarthRenderer", "Clouds NOT rendering: showClouds=$showClouds effClouds=$effectiveShowClouds powerSave=$isSystemPowerSave cloudInited=${glOverlay.cloudInited}")
+        }
+        if (!isSystemPowerSave) {
+            ensureAtmoTexture(ir)
+            if (atmoLoaded) {
+                val ar = ir * 1.20f
+                glOverlay.drawAtmosphere(mvp, cx, cy + off, ar, 1f)
+            }
         }
         drawNightOverlay(mvp, cx, cy + off, ir, ang, rotYRad)
-
-        ensureAtmoTexture(ir)
-        if (atmoLoaded) {
-            val ar = ir * 1.20f
-            glOverlay.drawAtmosphere(mvp, cx, cy + off, ar, 1f)
-        }
 
         // 表盘元素：边缘 + 刻度 + 弧形 + 指针 + 文字 + 复杂功能
         drawGlRim(mvp, cx, cy, ir)
         drawGlRimTicks(mvp, cx, cy, ir, f)
         drawGlArcs(mvp, cx, cy, ir, f)
         drawGlHands(mvp, cx, cy, ir, f, zdt)
-        drawGlTime(mvp, cx, cy, ir, f, timeText)
+        drawGlTime(mvp, cx, cy, ir, f, cachedTimeHh, cachedTimeMm)
         drawGlDate(mvp, cx, cy, ir, f, dateText, lunarText, gzText)
-        if (showSensors) drawGlSensors(mvp, cx, cy, ir, f, sensorTexts)
+        if (showSensors) drawGlSensors(mvp, cx, cy, ir, f, sensorTextsArr)
         drawGlComplications(mvp, cx, cy, ir, zdt)
+        drawPowerModeIndicator(mvp, cx, cy, ir, f)
 
         GLES20.glUseProgram(0)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
@@ -452,17 +534,22 @@ class EarthRenderer(
     }
 
     private fun ensureAtmoTexture(ir: Float) {
-        if (atmoIr == ir && atmoLoaded) return
+        if (atmoIr == ir && atmoLoaded && atmoPaletteIdx == accentIdx) return
+        atmoPaletteIdx = accentIdx
         val d = (ir * 2.4f).toInt().coerceAtLeast(64)
         val bmp = Bitmap.createBitmap(d, d, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val tcx = d / 2f; val tcy = d / 2f; val tr = d / 2f
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        // 主题色大气辉光：从 palette.atmo 派生
+        val ar = Color.red(palette.atmo)
+        val ag = Color.green(palette.atmo)
+        val ab = Color.blue(palette.atmo)
         p.shader = RadialGradient(tcx, tcy, tr,
             intArrayOf(
-                Color.argb(0, 50, 153, 242), Color.argb(0, 50, 153, 242),
-                Color.argb(45, 50, 153, 242), Color.argb(85, 50, 153, 242),
-                Color.argb(135, 50, 153, 242), Color.argb(0, 50, 153, 242)
+                Color.argb(0, ar, ag, ab), Color.argb(0, ar, ag, ab),
+                Color.argb(45, ar, ag, ab), Color.argb(85, ar, ag, ab),
+                Color.argb(135, ar, ag, ab), Color.argb(0, ar, ag, ab)
             ),
             floatArrayOf(0.0f, 0.76f, 0.83f, 0.88f, 0.96f, 1.0f),
             Shader.TileMode.CLAMP
@@ -474,9 +561,43 @@ class EarthRenderer(
         atmoIr = ir
     }
 
+    private fun initGlResources(sz: Int) {
+        ensureTextures()
+        bmpSize = sz
+        android.util.Log.i("EarthRenderer", "init GL sz=$sz")
+        earthGles.init(sz, dayTex, nightTex)
+        glPrimitives.init()
+        glOverlay.init()
+        cloudLoaded = false; initCloudTexture()
+        atmoIr = 0f; atmoLoaded = false
+        lastNightAng = Float.NaN; lastNightIr = Float.NaN
+        android.util.Log.i("EarthRenderer", "GL init done progEarth=${earthGles.progEarthDebug} prog2d=${glPrimitives.progDebug}")
+    }
+
+    private fun dateStrings(zdt: ZonedDateTime): Triple<String, String, String> {
+        val key = zdt.toLocalDate().toEpochDay() * 1440L + zdt.hour * 60L + zdt.minute
+        if (key != cachedMinuteKey) {
+            cachedMinuteKey = key
+            val localDate = zdt.toLocalDate()
+            cachedDateText = "${zdt.monthValue}月${zdt.dayOfMonth}日 ${dow(zdt.dayOfWeek)}"
+            cachedLunarText = if (showLunar) lunarCalc.toLunar(localDate) else ""
+            cachedGzText = if (showLunar) lunarCalc.toGanzhi(localDate) else ""
+            cachedSolarTerm = lunarCalc.currentSolarTerm(localDate)
+        }
+        return Triple(cachedDateText, cachedLunarText, cachedGzText)
+    }
+
     private fun drawNightOverlay(mvp: FloatArray, cx: Float, cy: Float, ir: Float, ang: Float, rotY: Float) {
-        if (!ang.equals(lastNightAng)) {
+        val needRebuild = if (effectivePowerMode == 2) {
+            lastNightAng.isNaN() || ir != lastNightIr ||
+            System.currentTimeMillis() - lastNightOverlayBuildMs > NIGHT_OVERLAY_REFRESH_MS
+        } else {
+            !ang.equals(lastNightAng) || ir != lastNightIr
+        }
+        if (needRebuild) {
+            lastNightOverlayBuildMs = System.currentTimeMillis()
             lastNightAng = ang
+            lastNightIr = ir
             val d = (ir * 2.4f).toInt().coerceAtLeast(64)
             val bmp = Bitmap.createBitmap(d, d, Bitmap.Config.ARGB_8888)
             val c = Canvas(bmp)
@@ -484,10 +605,14 @@ class EarthRenderer(
             val gdx = tr * 0.75f * cos(ang).toFloat()
             val gdy = -tr * 0.75f * sin(ang).toFloat()
             val np = Paint(Paint.ANTI_ALIAS_FLAG)
+            // 晨昏线染橙：在过渡带加入暖色调（日出日落橙红）
             np.shader = LinearGradient(
                 tcx + gdx, tcy + gdy, tcx - gdx, tcy - gdy,
-                intArrayOf(0x00000000, 0x00000000, 0x60000000.toInt()),
-                floatArrayOf(0.0f, 0.60f, 1.0f),
+                intArrayOf(
+                    0x00000000, 0x00000000,
+                    0x28FF8C00.toInt(), 0x38005060.toInt(), 0x60000000.toInt()
+                ),
+                floatArrayOf(0.0f, 0.52f, 0.60f, 0.68f, 1.0f),
                 Shader.TileMode.CLAMP
             )
             c.drawCircle(tcx, tcy, tr, np)
@@ -508,12 +633,35 @@ class EarthRenderer(
         }
     }
 
+    private fun drawPowerModeIndicator(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float) {
+        if (!isSystemPowerSave && effectivePowerMode != 2) return
+        // 省电指示：右上角小圆点（呼吸效果）
+        val breath = if (isSystemPowerSave) {
+            0.4f + 0.3f * (0.5f - 0.5f * cos(System.currentTimeMillis() / 1000f * 2f * PI.toFloat()))
+        } else 0.5f
+        val ix = cx + ir * 0.82f
+        val iy = cy - ir * 0.82f
+        glPrimitives.drawCircle(mvp, ix, iy, 3f * f,
+            floatArrayOf(0.3f, 0.9f, 0.3f, breath))
+    }
+
     private fun drawGlRim(mvp: FloatArray, cx: Float, cy: Float, ir: Float) {
+        // 主圆环：3 层由外到内渐淡，模拟金属厚度
         for (k in 0..2) {
             val alpha = ((2 - k) * 10 / 2) / 255f
             val color = intToGlColor(palette.rim, alpha)
             val strokeWidth = 2f + k * 1.5f
             glPrimitives.drawRing(mvp, cx, cy, ir - 2f, strokeWidth, color)
+        }
+        // 内侧细装饰环（高亮 1px）
+        glPrimitives.drawRing(mvp, cx, cy, ir - 7f, 1f, intToGlColor(palette.rim, 0.18f))
+
+        // 电池低时外圈红色脉冲（2 秒周期）
+        if (batteryIsLow && !isCharging) {
+            val pulse = (System.currentTimeMillis() % 2000L) / 2000f
+            val pulseAlpha = (0.25f + 0.35f * (0.5f - 0.5f * cos(pulse * 2f * PI.toFloat())))
+            glPrimitives.drawRing(mvp, cx, cy, ir + 2f, 2.5f,
+                floatArrayOf(1f, 0.15f, 0.1f, pulseAlpha))
         }
     }
 
@@ -535,11 +683,21 @@ class EarthRenderer(
     private fun drawGlArcs(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float) {
         if (!showSensors) return
         val ar = ir * 0.90f; val aw = 9f * f
+        val nowMs = System.currentTimeMillis()
+        val dtMs = if (lastArcAnimMs > 0) (nowMs - lastArcAnimMs).coerceAtMost(100L) else 16L
+        lastArcAnimMs = nowMs
+        // 缓动：每帧朝目标值靠近，300ms 到达 ~95%
+        val lerp = 1f - Math.pow(0.05, (dtMs / 300f).toDouble()).toFloat()
+
         for ((slotIdx, slot) in ARC_SLOTS.withIndex()) {
             val ds = arcDataSource[slotIdx]
             if (ds == 99) continue
             val (pct, _) = dataForSource(ds)
             val effectivePct = if (slot.slotId in _activeSlotIds) 0f else pct
+            arcTargetPct[slotIdx] = effectivePct
+            // 动画缓动
+            arcDisplayPct[slotIdx] += (arcTargetPct[slotIdx] - arcDisplayPct[slotIdx]) * lerp
+            val displayPct = arcDisplayPct[slotIdx]
             val color = palette.arcs.getOrElse(slotIdx) { 0xFF42A5F5.toInt() }
 
             val startRad = Math.toRadians(slot.startAngle.toDouble()).toFloat()
@@ -548,8 +706,8 @@ class EarthRenderer(
             val trackColor = intToGlColor(color, 25 / 255f)
             glPrimitives.drawArc(mvp, cx, cy, ar, startRad, sweepRad, aw, trackColor)
 
-            if (effectivePct > 0f) {
-                val fillRad = sweepRad * effectivePct.coerceIn(0f, 1f)
+            if (displayPct > 0.005f) {
+                val fillRad = sweepRad * displayPct.coerceIn(0f, 1f)
                 val glowColor = intToGlColor(color, 35 / 255f)
                 glPrimitives.drawArc(mvp, cx, cy, ar, startRad, fillRad, aw * 2.2f, glowColor)
                 val fillColor = intToGlColor(color, 1f)
@@ -560,30 +718,28 @@ class EarthRenderer(
 
     private fun drawGlHands(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float, zdt: ZonedDateTime) {
         val h = zdt.hour % 12; val m = zdt.minute; val s = zdt.second
-        val ms = zdt.nano / 1_000_000_000f
+        val ms = if (effectivePowerMode == 2) 0f else zdt.nano / 1_000_000_000f
 
         val hourDeg = (h + m / 60f) * 30f
         val minDeg = (m + s / 60f + ms / 60f) * 6f
         val secDeg = (s + ms) * 6f
 
-        val shadowColor = floatArrayOf(0f, 0f, 0f, 0.38f)
         val sdx = 1.2f * f; val sdy = 2f * f
 
         val hourWidth = 7f * f; val hourLen = ir * 0.45f
-        drawGlHand(mvp, cx + sdx, cy + sdy, hourLen, hourDeg, hourWidth * 1.3f, shadowColor)
+        drawGlHand(mvp, cx + sdx, cy + sdy, hourLen, hourDeg, hourWidth * 1.3f, shadowHandColor)
         drawGlHand(mvp, cx, cy, hourLen, hourDeg, hourWidth, intToGlColor(palette.hand, 1f))
 
         val minWidth = 5f * f; val minLen = ir * 0.68f
-        drawGlHand(mvp, cx + sdx, cy + sdy, minLen, minDeg, minWidth * 1.3f, shadowColor)
+        drawGlHand(mvp, cx + sdx, cy + sdy, minLen, minDeg, minWidth * 1.3f, shadowHandColor)
         drawGlHand(mvp, cx, cy, minLen, minDeg, minWidth, intToGlColor(palette.hand, 1f))
 
         val secWidth = 3.5f * f; val secLen = ir * 0.78f
-        drawGlHand(mvp, cx + sdx, cy + sdy, secLen, secDeg, secWidth * 1.3f, shadowColor)
+        drawGlHand(mvp, cx + sdx, cy + sdy, secLen, secDeg, secWidth * 1.3f, shadowHandColor)
         drawGlHand(mvp, cx, cy, secLen, secDeg, secWidth, intToGlColor(palette.second, 1f))
 
-        glPrimitives.drawCircle(mvp, cx + sdx, cy + sdy, 5f * f * 1.3f, shadowColor)
-        val dotColor = floatArrayOf(1f, 0.27f, 0f, 1f)
-        glPrimitives.drawCircle(mvp, cx, cy, 5f * f, dotColor)
+        glPrimitives.drawCircle(mvp, cx + sdx, cy + sdy, 5f * f * 1.3f, shadowHandColor)
+        glPrimitives.drawCircle(mvp, cx, cy, 5f * f, centerDotColor)
     }
 
     private fun drawGlHand(mvp: FloatArray, cx: Float, cy: Float, len: Float, deg: Float, width: Float, color: FloatArray) {
@@ -597,12 +753,9 @@ class EarthRenderer(
     private var cachedColonW = 0f; private var cachedHw = 0f; private var cachedMw = 0f
     private var cachedHh = ""; private var cachedMm = ""
 
-    private fun drawGlTime(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float, timeText: String) {
+    private fun drawGlTime(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float, hh: String, mm: String) {
         timeP.textSize = ir * 0.32f
         val baseY = cy - ir * 0.42f
-
-        val hh = String.format(Locale.US, "%02d", timeText.substringBefore(':').toIntOrNull() ?: 0)
-        val mm = String.format(Locale.US, "%02d", timeText.substringAfter(':').toIntOrNull() ?: 0)
 
         timeP.textAlign = Paint.Align.LEFT
         val fontKey = "${timeP.typeface}/${timeP.textSize}"
@@ -615,8 +768,10 @@ class EarthRenderer(
         if (cachedHh != hh) { cachedHw = timeP.measureText(hh); cachedHh = hh }
         if (cachedMm != mm) { cachedMw = timeP.measureText(mm); cachedMm = mm }
 
-        timeP.color = palette.time
-        timeP.setShadowLayer(6f * f, 0f, 4f * f, 0xCC000000.toInt())
+        // 阴影颜色跟随主题暗色 + 夜晚降亮
+        val shadowColor = (palette.rim and 0xFF000000.toInt()) or ((palette.rim shr 16 and 0xFF) / 3 shl 16) or ((palette.rim shr 8 and 0xFF) / 3 shl 8) or (palette.rim and 0xFF) / 3
+        timeP.color = dimColor(palette.time, nightDimFactor)
+        timeP.setShadowLayer(8f * f, 0f, 3f * f, shadowColor)
 
         val hResult = textCache.getOrUpdate("time_h", timeP, hh)
         val cResult = textCache.getOrUpdate("time_colon", timeP, ":")
@@ -638,24 +793,27 @@ class EarthRenderer(
     private fun drawGlDate(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float,
                            dateText: String, lunarText: String, gzText: String) {
         val by = cy + ir * 0.40f
-        gregP.color = palette.date; gregP.textSize = ir * 0.13f
-        gregP.setShadowLayer(14f * f, 0f, 4f * f, 0xCC000000.toInt())
+        val shadowC = 0xCC000000.toInt()
+        gregP.color = dimColor(palette.date, nightDimFactor); gregP.textSize = ir * 0.13f
+        gregP.setShadowLayer(14f * f, 0f, 4f * f, shadowC)
         textCache.getOrUpdate("date", gregP, dateText)?.let { (texId, tw, th, pad) ->
             val blt = pad.toFloat() - gregP.fontMetrics.ascent
             glPrimitives.drawTexturedQuad(mvp, texId, cx - tw / 2f, by - blt, tw.toFloat(), th.toFloat(), 1f)
         }
 
         if (showLunar) {
-            lunarP.color = palette.lunar; lunarP.textSize = ir * 0.11f
-            lunarP.setShadowLayer(10f * f, 0f, 3f * f, 0xBB000000.toInt())
+            lunarP.color = dimColor(palette.lunar, nightDimFactor); lunarP.textSize = ir * 0.11f
+            lunarP.setShadowLayer(10f * f, 0f, 3f * f, shadowC)
             textCache.getOrUpdate("lunar", lunarP, lunarText)?.let { (texId, tw, th, pad) ->
                 val ly = by + ir * 0.16f
                 val blt = pad.toFloat() - lunarP.fontMetrics.ascent
                 glPrimitives.drawTexturedQuad(mvp, texId, cx - tw / 2f, ly - blt, tw.toFloat(), th.toFloat(), 1f)
             }
-            gzP.color = palette.gz; gzP.textSize = ir * 0.085f
-            gzP.setShadowLayer(8f * f, 0f, 2f * f, 0xAA000000.toInt())
-            textCache.getOrUpdate("gz", gzP, gzText)?.let { (texId, tw, th, pad) ->
+            // 干支行：当天是节气时显示节气名，否则显示干支
+            val gzDisplay = if (cachedSolarTerm.isNotEmpty()) cachedSolarTerm else gzText
+            gzP.color = dimColor(palette.gz, nightDimFactor); gzP.textSize = ir * 0.085f
+            gzP.setShadowLayer(8f * f, 0f, 2f * f, shadowC)
+            textCache.getOrUpdate("gz", gzP, gzDisplay)?.let { (texId, tw, th, pad) ->
                 val gy = by + ir * 0.30f
                 val blt = pad.toFloat() - gzP.fontMetrics.ascent
                 glPrimitives.drawTexturedQuad(mvp, texId, cx - tw / 2f, gy - blt, tw.toFloat(), th.toFloat(), 1f)
@@ -663,7 +821,7 @@ class EarthRenderer(
         }
     }
 
-    private fun drawGlSensors(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float, sensorTexts: List<String>) {
+    private fun drawGlSensors(mvp: FloatArray, cx: Float, cy: Float, ir: Float, f: Float, sensorTexts: Array<String>) {
         senP.textSize = ir * 0.095f
         senP.setShadowLayer(9f * f, 0f, 2f * f, 0xAA000000.toInt())
         for ((slotIdx, slot) in ARC_SLOTS.withIndex()) {
@@ -686,10 +844,7 @@ class EarthRenderer(
     }
 
     private fun drawGlComplications(mvp: FloatArray, cx: Float, cy: Float, ir: Float, zdt: ZonedDateTime) {
-        val rp = RenderParameters(
-            drawMode = DrawMode.INTERACTIVE,
-            watchFaceLayers = setOf(WatchFaceLayer.COMPLICATIONS)
-        )
+        val rp = compRenderParams
         for (slot in complicationSlotsManager.complicationSlots.values) {
             val data = slot.complicationData.value
             if (data is EmptyComplicationData || data is NoDataComplicationData || data is NotConfiguredComplicationData) continue
@@ -699,7 +854,9 @@ class EarthRenderer(
             val slotIdx = slot.id
             if (slotIdx < 0 || slotIdx >= compTexIds.size) continue
 
-            val fp = compFingerprint(data)
+            val lastData = compLastData[slotIdx]
+            compLastData[slotIdx] = data
+            val fp = if (lastData !== data) compFingerprint(data) else compDataFp[slotIdx]
             val bw = bounds.width(); val bh = bounds.height()
             val sizeChanged = compBmpSizes[slotIdx][0] != bw || compBmpSizes[slotIdx][1] != bh
             val dataChanged = compDataFp[slotIdx] != fp
@@ -714,7 +871,14 @@ class EarthRenderer(
                 val bmp = compBmps[slotIdx]!!
                 bmp.eraseColor(0)
                 val canvas = Canvas(bmp)
-                slot.renderer.render(canvas, bounds, zdt, rp, slot.id)
+                // 传入主题色
+                val compRenderer = slot.renderer
+                if (compRenderer is EarthCanvasComplication) {
+                    compRenderer.textColor = dimColor(palette.time, nightDimFactor)
+                    compRenderer.titleColor = dimColor(palette.lunar, nightDimFactor)
+                    compRenderer.accentColor = palette.arcs.getOrElse(slotIdx) { palette.rim }
+                }
+                compRenderer.render(canvas, bounds, zdt, rp, slot.id)
 
                 if (compTexIds[slotIdx] == 0) {
                     val ids = IntArray(1); GLES20.glGenTextures(1, ids, 0)
@@ -758,6 +922,15 @@ class EarthRenderer(
     }
 
     private fun renderAmbient(zdt: ZonedDateTime, w: Int, h: Int, cx: Float, cy: Float, ir: Float, f: Float) {
+        if (System.currentTimeMillis() - lastPowerSaveCheckMs > 2000L) {
+            val newPowerSave = powerManager?.isPowerSaveMode == true
+            if (newPowerSave != isSystemPowerSave) {
+                android.util.Log.i("EarthRenderer", "PowerSave changed (ambient): $isSystemPowerSave -> $newPowerSave")
+                isSystemPowerSave = newPowerSave
+            }
+            lastPowerSaveCheckMs = System.currentTimeMillis()
+        }
+
         GLES20.glViewport(0, 0, w, h)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -768,89 +941,110 @@ class EarthRenderer(
 
         val sz = (min(w, h) * GL_SCALE).toInt().coerceAtLeast(64)
         if (sz > 0 && sz != bmpSize) {
-            ensureTextures(); bmpSize = sz
-            earthGles.init(sz, dayTex, nightTex)
-            glPrimitives.init()
-            glOverlay.init()
+            initGlResources(sz)
         }
 
         val mvp = orthoMvp(w, h)
 
         if (bmpSize > 0) {
-            val sz = bmpSize
+            val earthSz = bmpSize
             val off = ir * 0.45f
-            val sunDir = sunCalc.sunDirection(
-                zdt.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
+            sunCalc.sunDirection(
+                zdt.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime(), sunDirBuf
             )
-            val earthVpX = (w - sz) / 2
-            val earthVpY = ((h - sz) / 2 - off.toInt())
-            earthGles.render(sz, CHINA_RY, sunDir, earthVpX, earthVpY)
+            val earthVpX = (w - earthSz) / 2
+            val earthVpY = ((h - earthSz) / 2 - off.toInt())
+            earthGles.render(earthSz, CHINA_RY, sunDirBuf, earthVpX, earthVpY, sleepMode = true)
 
             resetGlState()
             GLES20.glViewport(0, 0, w, h)
             GLES20.glDisable(GLES20.GL_CULL_FACE)
             GLES20.glEnable(GLES20.GL_BLEND)
             GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
-
-            glPrimitives.drawCircle(mvp, cx, cy + off, ir, floatArrayOf(0f, 0f, 0f, 1f - 180f / 255f))
         }
 
-        val rimAlpha = 100 / 255f
-        glPrimitives.drawRing(mvp, cx, cy, ir - 2f, 2f, intToGlColor(0xFFCCCCCC.toInt(), rimAlpha))
+        drawShichenRing(mvp, cx, cy, ir, zdt)
 
-        val innerR = ir - 8f * f; val outerR = ir - 2f
-        val tickColor = intToGlColor(0xFFE0E0E0.toInt(), 1f)
-        for (i in 0 until 12) {
-            val deg = i * 30f
-            val rad = Math.toRadians((deg - 90).toDouble())
-            val alpha = if (i % 3 == 0) 255 / 255f else 180 / 255f
-            val width = if (i % 3 == 0) 5f * f else 3.5f * f
-            val c = floatArrayOf(tickColor[0], tickColor[1], tickColor[2], alpha)
-            glPrimitives.drawLine(mvp,
-                cx + innerR * cos(rad).toFloat(), cy + innerR * sin(rad).toFloat(),
-                cx + outerR * cos(rad).toFloat(), cy + outerR * sin(rad).toFloat(),
-                width, c)
-        }
-
-        val hr = zdt.hour % 12; val mn = zdt.minute
-        val handColor = intToGlColor(palette.hand, 200 / 255f)
-        drawGlHand(mvp, cx, cy, ir * 0.45f, (hr + mn / 60f) * 30f, 7f * f, handColor)
-        drawGlHand(mvp, cx, cy, ir * 0.68f, (mn + zdt.second / 60f) * 6f, 5f * f, handColor)
-
-        val dotColor = floatArrayOf(1f, 0.27f, 0f, 220 / 255f)
-        glPrimitives.drawCircle(mvp, cx, cy, 5f * f, dotColor)
-
-        val off = ir * 0.45f
-        val timeText = String.format(Locale.US, "%02d:%02d", zdt.hour, zdt.minute)
-        timeP.textSize = ir * 0.32f
-        timeP.color = palette.time
-        timeP.textAlign = Paint.Align.LEFT
-        timeP.setShadowLayer(0f, 0f, 0f, 0)
-        val hh = String.format(Locale.US, "%02d", zdt.hour)
-        val mm = String.format(Locale.US, "%02d", zdt.minute)
-        val colonW = timeP.measureText(":")
-        val hw = timeP.measureText(hh)
-        val mw = timeP.measureText(mm)
-        val totalW = hw + colonW + mw
-        val baseY = cy - ir * 0.42f
-        val startX = cx - totalW / 2f
-        val ambAlpha = 180 / 255f
-
-        textCache.getOrUpdate("amb_h", timeP, hh)?.let { (texId, tw, th, pad) ->
-            val blt = pad.toFloat() - timeP.fontMetrics.ascent
-            glPrimitives.drawTexturedQuad(mvp, texId, startX - pad.toFloat(), baseY - blt, tw.toFloat(), th.toFloat(), ambAlpha)
-        }
-        textCache.getOrUpdate("amb_c", timeP, ":")?.let { (texId, tw, th, pad) ->
-            val blt = pad.toFloat() - timeP.fontMetrics.ascent
-            glPrimitives.drawTexturedQuad(mvp, texId, startX + hw - pad.toFloat(), baseY - blt, tw.toFloat(), th.toFloat(), ambAlpha)
-        }
-        textCache.getOrUpdate("amb_m", timeP, mm)?.let { (texId, tw, th, pad) ->
-            val blt = pad.toFloat() - timeP.fontMetrics.ascent
-            glPrimitives.drawTexturedQuad(mvp, texId, startX + hw + colonW - pad.toFloat(), baseY - blt, tw.toFloat(), th.toFloat(), ambAlpha)
-        }
-
-        timeP.textAlign = Paint.Align.CENTER
         wasInteractive = false
+    }
+
+    private val shichenNames = arrayOf("子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥")
+    private val shenP = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER }
+    private val shenTypeDefault = Typeface.DEFAULT_BOLD
+    private val shenTypeSerif = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
+
+    private fun drawShichenRing(mvp: FloatArray, cx: Float, cy: Float, ir: Float, zdt: ZonedDateTime) {
+        if (shichenFont == 2) return  // 用户关闭了时辰显示
+        shenP.typeface = if (shichenFont == 1) shenTypeSerif else shenTypeDefault
+        val shichen = ((zdt.hour + 1) % 24) / 2
+        val ringOuterR = ir * 0.935f
+        val ringInnerR = ringOuterR - 15f
+        val step = (Math.PI * 2.0 / 12.0).toFloat()
+        val baseAngle = (-Math.PI / 2.0).toFloat() // 子在上方
+
+        // 双环（加粗 + 15px 间距）— 系统省电时降低轨道亮度
+        val ringDim = if (isSystemPowerSave) 0.5f else 1f
+        glPrimitives.drawRing(mvp, cx, cy, ringOuterR, 2.5f,
+            floatArrayOf(0.71f, 0.75f, 0.82f, 0.24f * ringDim))
+        glPrimitives.drawRing(mvp, cx, cy, ringInnerR, 2.5f,
+            floatArrayOf(0.59f, 0.63f, 0.71f, 0.20f * ringDim))
+
+        for (i in 0 until 12) {
+            val a = baseAngle + step * i
+            val cosA = Math.cos(a.toDouble()).toFloat()
+            val sinA = Math.sin(a.toDouble()).toFloat()
+            val isCur = i == shichen
+            val dist = ((i - shichen + 6) % 12 - 6).let { if (it < 0) -it else it }
+
+            // ── 刻度点 ── 系统省电时降低非当前时辰的亮度
+            val ptDim = if (isSystemPowerSave) 0.5f else 1f
+            val (ptAlpha, ptSize) = when (dist) {
+                0 -> 0.92f to 4.5f
+                1 -> 0.45f to 3.0f
+                2 -> 0.25f to 2.5f
+                3 -> 0.14f to 2.0f
+                4 -> 0.08f to 1.5f
+                5 -> 0.04f to 1.2f
+                else -> 0.02f to 1.0f
+            }
+            val dotR = (ringOuterR + ringInnerR) / 2f  // 点在双环中间
+            val dotX = cx + dotR * cosA; val dotY = cy + dotR * sinA
+            if (isCur) {
+                glPrimitives.drawCircle(mvp, dotX, dotY, 7f,
+                    floatArrayOf(1f, 0.82f, 0.61f, 0.55f * (if (isSystemPowerSave) 0.7f else 1f)))
+                glPrimitives.drawCircle(mvp, dotX, dotY, ptSize,
+                    floatArrayOf(1f, 0.90f, 0.75f, 0.95f * (if (isSystemPowerSave) 0.8f else 1f)))
+            } else {
+                glPrimitives.drawCircle(mvp, dotX, dotY, ptSize,
+                    floatArrayOf(0.65f, 0.71f, 0.78f, ptAlpha * ptDim))
+            }
+
+            // ── 时辰字（内环内侧 20px，垂直于圆边面向圆心）──
+            val textR = ringInnerR - 20f
+            val fontSize: Float; val colorR: Int; val colorG: Int; val colorB: Int; val alpha: Float
+            when (dist) {
+                0 -> { fontSize = 43f; colorR = 0xF0; colorG = 0xD0; colorB = 0xAA; alpha = 1.0f }
+                1 -> { fontSize = 32f; colorR = 0xB8; colorG = 0xC8; colorB = 0xDD; alpha = 0.65f }
+                2 -> { fontSize = 26f; colorR = 0x90; colorG = 0xA0; colorB = 0xBB; alpha = 0.36f }
+                3 -> { fontSize = 21f; colorR = 0x6A; colorG = 0x7A; colorB = 0x98; alpha = 0.20f }
+                4 -> { fontSize = 18f; colorR = 0x4E; colorG = 0x5E; colorB = 0x7A; alpha = 0.12f }
+                5 -> { fontSize = 16f; colorR = 0x38; colorG = 0x48; colorB = 0x62; alpha = 0.07f }
+                else -> { fontSize = 14f; colorR = 0x2E; colorG = 0x3E; colorB = 0x55; alpha = 0.05f }
+            }
+            shenP.textSize = fontSize
+            val effAlpha = if (isSystemPowerSave) alpha * 0.6f else alpha
+            shenP.color = android.graphics.Color.argb((effAlpha * 255f).toInt(), colorR, colorG, colorB)
+            shenP.setShadowLayer(if (isCur) 2f else 0f, 0.8f, 1.2f,
+                if (isCur) 0x80000000.toInt() else 0)
+            val cxText = cx + textR * cosA; val cyText = cy + textR * sinA
+            val cacheKey = "sR_${i}_${fontSize}_${colorR}_${colorG}_${colorB}_${(effAlpha*100).toInt()}"
+            textCache.getOrUpdate(cacheKey, shenP, shichenNames[i])?.let { (texId, tw, th, _) ->
+                // 旋转角 = 字符所在方位 + 90°，使文字面向圆心
+                val rotAngle = a + (Math.PI / 2.0).toFloat()
+                glPrimitives.drawTexturedQuadRotated(mvp, texId, cxText, cyText,
+                    tw.toFloat(), th.toFloat(), rotAngle, 1f)
+            }
+        }
     }
 
     private fun dataForSource(id: Int): Pair<Float, String> = when (id) {
@@ -866,7 +1060,6 @@ class EarthRenderer(
             pct to weatherFetcher.display
         }
         4 -> {
-            notifProvider.refresh()
             val n = notifProvider.count
             val pct = (n / 10f).coerceIn(0f, 1f)
             val txt = if (n > 0) "🔔$n" else "🔔0"
@@ -924,6 +1117,15 @@ class EarthRenderer(
         )
     }
 
+    /** 按因子降低颜色亮度（1=原色, 0.5=半亮），保留 alpha。 */
+    private fun dimColor(color: Int, factor: Float): Int {
+        val a = color and 0xFF000000.toInt()
+        val r = ((color shr 16 and 0xFF) * factor).toInt().coerceIn(0, 255)
+        val g = ((color shr 8 and 0xFF) * factor).toInt().coerceIn(0, 255)
+        val b = ((color and 0xFF) * factor).toInt().coerceIn(0, 255)
+        return a or (r shl 16) or (g shl 8) or b
+    }
+
     private fun validateGlContext(): Boolean {
         val progId = glPrimitives.progDebug
         if (progId == 0) return false
@@ -939,6 +1141,7 @@ class EarthRenderer(
         writer.println("Earth Live GLES — state dump")
         writer.println("  accent=$accentIdx lunar=$showLunar sensors=$showSensors clouds=$showClouds")
         writer.println("  arcs=${arcDataSource.contentToString()} battery=$batteryPct% chg=$isCharging")
+        writer.println("  powerMode=$powerMode effMode=$effectivePowerMode sysPowerSave=$isSystemPowerSave")
     }
 
     override fun onDestroy() {
@@ -951,7 +1154,7 @@ class EarthRenderer(
         }
         for (bmp in compBmps) bmp?.recycle()
         if (nightOverlayTex != 0) GLES20.glDeleteTextures(1, intArrayOf(nightOverlayTex), 0)
-        if (dayTexLoaded) dayTex?.recycle()
-        if (nightTexLoaded) nightTex?.recycle()
+        dayTex?.recycle()
+        nightTex?.recycle()
     }
 }

@@ -20,6 +20,7 @@ class GlOverlay {
 
     private val quadPosBuf = allocFloat(8)
     private val quadUvBuf = allocFloat(8)
+    private val quadScratch = FloatArray(8)
 
     private var progTex = 0
     private var uMvpTex = 0; private var uAlphaTex = 0; private var uOffUTex = 0; private var uTexTex = 0
@@ -99,7 +100,8 @@ class GlOverlay {
     }
 
     fun drawTexturedQuad(mvp: FloatArray, texId: Int, x: Float, y: Float, w: Float, h: Float, alpha: Float, uOffset: Float = 0f) {
-        val d = floatArrayOf(x, y + h, x + w, y + h, x, y, x + w, y)
+        val d = quadScratch
+        d[0] = x; d[1] = y + h; d[2] = x + w; d[3] = y + h; d[4] = x; d[5] = y; d[6] = x + w; d[7] = y
         quadPosBuf.putArray(d)
 
         GLES20.glUseProgram(progTex)
@@ -121,7 +123,8 @@ class GlOverlay {
     fun drawClouds(mvp: FloatArray, cx: Float, cy: Float, radius: Float, uOffset: Float, alpha: Float, rotY: Float) {
         if (!cloudInited || cloudTexId == 0 || progCloud == 0) return
         val x = cx - radius; val y = cy - radius; val s = radius * 2
-        val d = floatArrayOf(x, y + s, x + s, y + s, x, y, x + s, y)
+        val d = quadScratch
+        d[0] = x; d[1] = y + s; d[2] = x + s; d[3] = y + s; d[4] = x; d[5] = y; d[6] = x + s; d[7] = y
         quadPosBuf.putArray(d)
 
         GLES20.glUseProgram(progCloud)
@@ -148,15 +151,16 @@ class GlOverlay {
         drawTexturedQuad(mvp, atmoTexId, cx - radius, cy - radius, radius * 2, radius * 2, alpha)
     }
 
-    fun drawNightOverlay(mvp: FloatArray, cx: Float, cy: Float, radius: Float, texId: Int, rotY: Float) {
+    fun drawNightOverlay(mvp: FloatArray, cx: Float, cy: Float, radius: Float, texId: Int, rotY: Float, alpha: Float = 1f) {
         if (texId == 0 || progCloud == 0) return
         val x = cx - radius; val y = cy - radius; val s = radius * 2
-        val d = floatArrayOf(x, y + s, x + s, y + s, x, y, x + s, y)
+        val d = quadScratch
+        d[0] = x; d[1] = y + s; d[2] = x + s; d[3] = y + s; d[4] = x; d[5] = y; d[6] = x + s; d[7] = y
         quadPosBuf.putArray(d)
 
         GLES20.glUseProgram(progCloud)
         GLES20.glUniformMatrix4fv(uMvpCloud, 1, false, mvp, 0)
-        GLES20.glUniform1f(uAlphaCloud, 1f)
+        GLES20.glUniform1f(uAlphaCloud, alpha)
         GLES20.glUniform1f(uOffUCloud, 0f)
         GLES20.glUniform2f(uCenterCloud, cx, cy)
         GLES20.glUniform1f(uRadiusCloud, radius)
@@ -183,8 +187,13 @@ class GlOverlay {
 
     private fun mkProg(v: String, f: String): Int {
         val vs = compile(GLES20.GL_VERTEX_SHADER, v); val fs = compile(GLES20.GL_FRAGMENT_SHADER, f)
-        if (vs == 0 || fs == 0) return 0
+        if (vs == 0 || fs == 0) {
+            if (vs != 0) GLES20.glDeleteShader(vs)
+            if (fs != 0) GLES20.glDeleteShader(fs)
+            return 0
+        }
         val p = GLES20.glCreateProgram(); GLES20.glAttachShader(p, vs); GLES20.glAttachShader(p, fs); GLES20.glLinkProgram(p)
+        GLES20.glDeleteShader(vs); GLES20.glDeleteShader(fs)
         val st = IntArray(1); GLES20.glGetProgramiv(p, GLES20.GL_LINK_STATUS, st, 0)
         if (st[0] == 0) { GLES20.glDeleteProgram(p); return 0 }
         return p

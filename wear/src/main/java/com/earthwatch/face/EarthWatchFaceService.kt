@@ -167,6 +167,32 @@ class EarthWatchFaceService : WatchFaceService() {
             affectsWatchFaceLayers = setOf(WatchFaceLayer.BASE)
         )
 
+        val SHICHEN_FONT = ListUserStyleSetting(
+            id = UserStyleSetting.Id("shichen_font"),
+            displayName = "时辰字体",
+            description = "",
+            icon = null,
+            options = listOf(
+                ListUserStyleSetting.ListOption(UserStyleSetting.Option.Id("0"), "系统默认", "", null),
+                ListUserStyleSetting.ListOption(UserStyleSetting.Option.Id("1"), "宋体", "", null),
+                ListUserStyleSetting.ListOption(UserStyleSetting.Option.Id("2"), "关闭", "", null),
+            ),
+            affectsWatchFaceLayers = setOf(WatchFaceLayer.BASE)
+        )
+
+        val POWER_MODE = ListUserStyleSetting(
+            id = UserStyleSetting.Id("power_mode"),
+            displayName = "功耗模式",
+            description = "",
+            icon = null,
+            options = listOf(
+                ListUserStyleSetting.ListOption(UserStyleSetting.Option.Id("0"), "平衡 (30fps)", "", null),
+                ListUserStyleSetting.ListOption(UserStyleSetting.Option.Id("1"), "动态 (动画50fps)", "", null),
+                ListUserStyleSetting.ListOption(UserStyleSetting.Option.Id("2"), "省电 (1fps跳秒)", "", null),
+            ),
+            affectsWatchFaceLayers = setOf(WatchFaceLayer.BASE)
+        )
+
         /** Helper: get string id from ListOption */
         fun optionId(option: UserStyleSetting.Option?): Int {
             if (option !is ListUserStyleSetting.ListOption) return 0

@@ -32,8 +32,10 @@ class LunarCalendar {
     private val zhi = arrayOf("子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥")
 
     private val baseDate = LocalDate.of(1900, 1, 31)
+    private val maxYear = 1900 + lunarInfo.size - 1  // 2050
 
     private fun lunarYearDays(y: Int): Int {
+        if (y - 1900 >= lunarInfo.size) return 354  // 越界保护：回落平年
         var sum = 348
         var i = 0x8000
         while (i > 0x8) {
@@ -44,15 +46,20 @@ class LunarCalendar {
     }
 
     private fun leapDays(y: Int): Int {
+        if (y - 1900 >= lunarInfo.size) return 0
         if (leapMonth(y) != 0) {
             return if ((lunarInfo[y - 1900] and 0x10000) != 0) 30 else 29
         }
         return 0
     }
 
-    private fun leapMonth(y: Int): Int = lunarInfo[y - 1900] and 0xf
+    private fun leapMonth(y: Int): Int {
+        if (y - 1900 >= lunarInfo.size) return 0
+        return lunarInfo[y - 1900] and 0xf
+    }
 
     private fun monthDays(y: Int, m: Int): Int {
+        if (y - 1900 >= lunarInfo.size) return 29
         return if ((lunarInfo[y - 1900] and (0x10000 shr m)) != 0) 30 else 29
     }
 
@@ -104,5 +111,70 @@ class LunarCalendar {
         val dayGz = gan[gzIdx % 10] + zhi[gzIdx % 12]
 
         return "${yrGz}年 ${moGz}月 ${dayGz}日"
+    }
+
+    // 24 节气名称（按黄经 15° 递增，从立春=315° 开始）
+    private val solarTerms = arrayOf(
+        "立春","雨水","惊蛰","春分","清明","谷雨",
+        "立夏","小满","芒种","夏至","小暑","大暑",
+        "立秋","处暑","白露","秋分","寒露","霜降",
+        "立冬","小雪","大雪","冬至","小寒","大寒"
+    )
+
+    /**
+     * 精确节气计算：基于太阳黄经（VSOP87 简化公式）。
+     *
+     * 24 节气对应太阳黄经每 15° 一个（立春=315°, 雨水=330°, ..., 大寒=300°）。
+     * 算法：计算当天正午太阳黄经，若恰好在某个节气点 ±1.0° 内则返回该节气名。
+     * 太阳每日移动约 0.985°，±1° 窗口恰好覆盖节气当天及相邻半天。
+     */
+    fun currentSolarTerm(date: LocalDate): String {
+        val solarLongitude = solarLongitude(date)
+        val lon = ((solarLongitude % 360.0) + 360.0) % 360.0
+        for (i in 0 until 24) {
+            val termLon = (315.0 + i * 15.0) % 360.0
+            val diff = abs(angularDiff(lon, termLon))
+            if (diff <= 1.0) {
+                return solarTerms[i]
+            }
+        }
+        return ""
+    }
+
+    /** 计算两天之间的角差（度），结果在 [0, 180]。 */
+    private fun angularDiff(a: Double, b: Double): Double {
+        val d = abs(a - b) % 360.0
+        return if (d > 180.0) 360.0 - d else d
+    }
+
+    /**
+     * 计算给定日期太阳黄经（视黄经，度）。
+     * 基于 Jean Meeus《天文算法》低精度公式，精度 ±0.01° 足够节气判定。
+     */
+    private fun solarLongitude(date: LocalDate): Double {
+        // J2000.0 儒略日
+        val jd = date.toEpochDay() + 2440587.5 + 0.5  // 当天正午
+        val t = (jd - 2451545.0) / 36525.0
+
+        // 太阳平黄经
+        val l0 = 280.46646 + 36000.76983 * t + 0.0003032 * t * t
+        // 太阳近地点平近点角
+        val m = 357.52911 + 35999.05029 * t - 0.0001537 * t * t
+        val mRad = Math.toRadians(m)
+
+        // 中心差（地球轨道椭圆修正）
+        val c = (1.914602 - 0.004817 * t - 0.000014 * t * t) * Math.sin(mRad) +
+                (0.019993 - 0.000101 * t) * Math.sin(2 * mRad) +
+                0.000289 * Math.sin(3 * mRad)
+
+        // 太阳视黄经
+        val trueLong = l0 + c
+
+        // 章动修正（约 ±0.005°）
+        val omega = 125.04 - 1934.136 * t
+        val omegaRad = Math.toRadians(omega)
+        val apparent = trueLong - 0.00569 - 0.00478 * Math.sin(omegaRad)
+
+        return apparent
     }
 }
